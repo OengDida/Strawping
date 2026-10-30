@@ -1,0 +1,9 @@
+{
+  "name": "strawping-store",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/server/api.mjs && node --check api/router.mjs && node --check scripts/hash-password.mjs && node --check src/client/js/storefront/app.js && node --check src/client/js/admin/admin.js && node --check src/client/js/shared/store-db.js && node --check src/client/js/storefront/tailwind-config.js",
+    "test": "node --test"
+  }
+}

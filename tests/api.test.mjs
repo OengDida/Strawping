@@ -1,0 +1,474 @@
+import test, { afterEach } from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { handler } from "../src/server/api.mjs";
+import vercelHandler from "../api/router.mjs";
+
+const sessionSecret = "test-session-secret-with-more-than-32-characters";
+process.env.SUPABASE_URL = "https://supabase.example";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+process.env.STRAWPING_ADMIN_PASSWORD = "test-admin-password";
+process.env.ADMIN_SESSION_SECRET = sessionSecret;
+delete process.env.TELEGRAM_BOT_TOKEN;
+delete process.env.TELEGRAM_CHAT_ID;
+
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+function event(path, method = "GET", body, headers = {}) {
+  return {
+    httpMethod: method,
+    path: `/api${path}`,
+    headers,
+    body: body === undefined ? null : JSON.stringify(body)
+  };
+}
+
+const SESSION_ID = "a".repeat(64);
+
+function credentialVersionFor(source) {
+  return crypto.createHmac("sha256", sessionSecret).update(`credential-version:${source}`).digest("hex").slice(0, 24);
+}
+
+function signedSession({
+  csrfToken = "c".repeat(64),
+  exp = Math.floor(Date.now() / 1000) + 300,
+  sessionId = SESSION_ID,
+  overrides = {}
+} = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    typ: "strawping-admin-session",
+    iss: "strawping-store",
+    aud: "strawping-admin",
+    role: "admin",
+    v: 1,
+    cv: credentialVersionFor(process.env.STRAWPING_ADMIN_PASSWORD),
+    sessionId,
+    csrfToken,
+    iat: now,
+    nbf: now,
+    exp,
+    ...overrides
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", sessionSecret).update(encoded).digest("base64url");
+  return { token: `${encoded}.${signature}`, csrfToken };
+}
+
+// Fake fetch that behaves like Supabase for store_sessions and defers the rest.
+function withSessionStore(next, { active = true } = {}) {
+  return async (url, options = {}) => {
+    if (String(url).includes("store_sessions")) {
+      return reply(active ? [{ session_id_hash: "x" }] : []);
+    }
+    return next(url, options);
+  };
+}
+
+function reply(value, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
+
+test("admin endpoints reject requests without a valid signed session", async () => {
+  const protectedRequests = [
+    event("/orders"),
+    event("/orders/order-1", "PATCH", { status: "Completed" }),
+    event("/orders/order-1", "DELETE", {}),
+    event("/products", "PUT", { products: [] }),
+    event("/settings", "PUT", {}),
+    event("/notify/test", "POST", {})
+  ];
+  let upstreamCalls = 0;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    return reply([]);
+  };
+
+  for (const request of protectedRequests) {
+    const response = await handler(request, { ip: "203.0.113.5" });
+    assert.equal(response.statusCode, 401);
+    assert.deepEqual(JSON.parse(response.body), { error: "Unauthorized" });
+  }
+  assert.equal(upstreamCalls, 0);
+});
+
+test("admin endpoints reject a forged token even when its payload looks valid", async () => {
+  const csrfToken = "x".repeat(64);
+  const encoded = Buffer.from(JSON.stringify({
+    role: "admin",
+    sessionId: "forged",
+    csrfToken,
+    exp: Math.floor(Date.now() / 1000) + 300
+  })).toString("base64url");
+  const response = await handler(
+    event("/orders", "GET", undefined, { authorization: `Bearer ${encoded}.not-a-valid-signature` }),
+    { ip: "203.0.113.5" }
+  );
+  assert.equal(response.statusCode, 401);
+});
+
+test("settings and products are readable through the public storefront API", async () => {
+  globalThis.fetch = async url => {
+    if (String(url).includes("key=eq.products")) {
+      return reply([{ value: [{
+        id: "prod-mug",
+        name: "Mug",
+        category: "<b>Home</b>",
+        price: 4.25,
+        image: "https://images.example/mug.jpg",
+        description: "Cup",
+        inStock: true,
+        ignoredAdminField: "not returned"
+      }] }]);
+    }
+    if (String(url).includes("key=eq.settings")) {
+      return reply([{ value: { storeName: "Strawping", currency: "$", secret: "not returned" } }]);
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  const products = await handler(event("/products"));
+  assert.equal(products.statusCode, 200);
+  assert.deepEqual(JSON.parse(products.body).products, [{
+    id: "prod-mug",
+    name: "Mug",
+    category: "<b>Home</b>",
+    price: 4.25,
+    image: "https://images.example/mug.jpg",
+    description: "Cup",
+    inStock: true
+  }]);
+
+  const settings = await handler(event("/settings"));
+  assert.equal(settings.statusCode, 200);
+  assert.deepEqual(JSON.parse(settings.body).settings, {
+    storeName: "Strawping",
+    tagline: "Thoughtfully crafted lifestyle essentials and aesthetic goods.",
+    announcement: "✨ Free express doorstep delivery on all orders!",
+    announcementActive: true,
+    currency: "$",
+    contactTelegram: "@didaoeng"
+  });
+});
+
+test("CSRF validation requires the token from a verified session and matching header", async () => {
+  const session = signedSession();
+  const request = event(
+    "/settings",
+    "PUT",
+    { csrfToken: session.csrfToken, storeName: "Changed" },
+    {
+      authorization: `Bearer ${session.token}`,
+      "x-csrf-token": "wrong-token"
+    }
+  );
+  globalThis.fetch = withSessionStore(async () => reply([]));
+  const response = await handler(request);
+  assert.equal(response.statusCode, 403);
+});
+
+test("a valid signed admin session can update settings with its CSRF token", async () => {
+  const session = signedSession();
+  let written;
+  globalThis.fetch = withSessionStore(async (url, options = {}) => {
+    assert.match(String(url), /rest\/v1\/store_data\?on_conflict=key$/);
+    written = JSON.parse(options.body);
+    return reply([{ key: "settings", value: written.value }]);
+  });
+
+  const response = await handler(event(
+    "/settings",
+    "PUT",
+    { csrfToken: session.csrfToken, storeName: "New Store", currency: "$" },
+    {
+      authorization: `Bearer ${session.token}`,
+      "x-csrf-token": session.csrfToken
+    }
+  ));
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(written.key, "settings");
+  assert.equal(JSON.parse(response.body).settings.storeName, "New Store");
+});
+
+test("login calls the rate limiter with the SQL function's argument names", async () => {
+  let rpcBody;
+  globalThis.fetch = async (url, options) => {
+    assert.match(String(url), /rpc\/consume_rate_limit$/);
+    // The first call is the per-IP limit; a second, account-wide limit follows it.
+    rpcBody ??= JSON.parse(options.body);
+    return reply(true);
+  };
+
+  const response = await handler(
+    event("/auth/login", "POST", { password: "wrong-password" }),
+    { ip: "203.0.113.8" }
+  );
+  assert.equal(response.statusCode, 401);
+  assert.deepEqual(Object.keys(rpcBody).sort(), ["p_key", "p_limit", "p_window_seconds"]);
+  assert.equal(rpcBody.p_limit, 8);
+  assert.equal(rpcBody.p_window_seconds, 900);
+});
+
+test("rate-limiter failures log safe diagnostics but keep the public error generic", async () => {
+  const originalConsoleError = console.error;
+  const capturedLogs = [];
+  console.error = (...args) => capturedLogs.push(args);
+  globalThis.fetch = async url => {
+    assert.match(String(url), /rpc\/consume_rate_limit$/);
+    return new Response(JSON.stringify({
+      code: "PGRST202",
+      message: "Could not find the function in the schema cache"
+    }), { status: 404, headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    const response = await handler(
+      event("/auth/login", "POST", { password: "wrong-password" }),
+      { ip: "203.0.113.9" }
+    );
+    assert.equal(response.statusCode, 503);
+    assert.deepEqual(JSON.parse(response.body), {
+      error: "A required service is temporarily unavailable."
+    });
+    const logText = JSON.stringify(capturedLogs);
+    assert.match(logText, /PGRST202/);
+    assert.doesNotMatch(logText, /test-service-role-key/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test("order totals and item details are derived from the server catalog", async () => {
+  let savedOrder;
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
+    if (requestUrl.includes("key=eq.products")) {
+      return reply([{ value: [{
+        id: "prod-mug",
+        name: "Mug",
+        category: "Home",
+        price: 3.5,
+        image: "",
+        description: "",
+        inStock: true
+      }] }]);
+    }
+    if (requestUrl.endsWith("/rest/v1/store_orders") && options.method === "POST") {
+      savedOrder = JSON.parse(options.body);
+      return reply([savedOrder]);
+    }
+    throw new Error(`Unexpected request: ${requestUrl}`);
+  };
+
+  const response = await handler(
+    event("/orders", "POST", {
+      customer: {
+        name: "Customer",
+        phone: "123456",
+        email: "customer@example.com",
+        address: "One Street",
+        notes: "Please call"
+      },
+      items: [{ id: "prod-mug", quantity: 2, name: "Forged name", price: 0.01 }],
+      total: 0.02
+    }),
+    { ip: "203.0.113.10" }
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(savedOrder.total, 7);
+  assert.deepEqual(savedOrder.items, [{
+    id: "prod-mug",
+    name: "Mug",
+    quantity: 2,
+    price: 3.5
+  }]);
+});
+
+test("order creation fails closed when the rate limiter denies the request", async () => {
+  globalThis.fetch = async url => {
+    assert.match(String(url), /rpc\/consume_rate_limit$/);
+    return reply(false);
+  };
+  const response = await handler(
+    event("/orders", "POST", { customer: {}, items: [] }),
+    { ip: "203.0.113.11" }
+  );
+  assert.equal(response.statusCode, 429);
+});
+
+test("Vercel adapter forwards /api/products to the shared API handler", async () => {
+  globalThis.fetch = async url => {
+    assert.match(String(url), /key=eq\.products/);
+    return reply([{ value: [{
+      id: "prod-mug",
+      name: "Mug",
+      category: "Home",
+      price: 4.25,
+      image: "",
+      description: "",
+      inStock: true
+    }] }]);
+  };
+
+  const response = await vercelHandler.fetch(new Request(
+    "https://strawping.vercel.app/api/router?route=products",
+    { headers: { "x-forwarded-for": "203.0.113.5" } }
+  ));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    products: [{
+      id: "prod-mug",
+      name: "Mug",
+      category: "Home",
+      price: 4.25,
+      image: "",
+      description: "",
+      inStock: true
+    }]
+  });
+});
+
+test("login with the correct password creates a server-side session and a hardened token", async () => {
+  let storedSession;
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
+    if (requestUrl.endsWith("/rest/v1/store_sessions") && options.method === "POST") {
+      storedSession = JSON.parse(options.body);
+      return new Response("", { status: 201 });
+    }
+    if (requestUrl.includes("store_sessions?expires_at=lt.")) return new Response(null, { status: 204 });
+    throw new Error(`Unexpected request: ${requestUrl}`);
+  };
+  const response = await handler(
+    event("/auth/login", "POST", { password: "test-admin-password" }),
+    { ip: "203.0.113.20" }
+  );
+  assert.equal(response.statusCode, 200);
+  const result = JSON.parse(response.body);
+  const payload = JSON.parse(Buffer.from(result.token.split(".")[0], "base64url").toString("utf8"));
+  assert.equal(payload.iss, "strawping-store");
+  assert.equal(payload.aud, "strawping-admin");
+  assert.ok(payload.iat && payload.nbf && payload.exp > payload.iat);
+  assert.match(storedSession.session_id_hash, /^[0-9a-f]{64}$/);
+  assert.notEqual(storedSession.session_id_hash, payload.sessionId);
+});
+
+test("login works with a salted scrypt hash and rejects a wrong password", async () => {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync("a-long-test-passphrase", salt, 64, { N: 16384, r: 8, p: 1 });
+  process.env.STRAWPING_ADMIN_PASSWORD_HASH = `scrypt$16384$8$1$${salt.toString("base64")}$${hash.toString("base64")}`;
+  try {
+    globalThis.fetch = async (url, options = {}) => {
+      const requestUrl = String(url);
+      if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
+      if (requestUrl.includes("store_sessions")) return new Response("", { status: 201 });
+      throw new Error(`Unexpected request: ${requestUrl}`);
+    };
+    const bad = await handler(event("/auth/login", "POST", { password: "test-admin-password" }), { ip: "203.0.113.21" });
+    assert.equal(bad.statusCode, 401);
+    const good = await handler(event("/auth/login", "POST", { password: "a-long-test-passphrase" }), { ip: "203.0.113.21" });
+    assert.equal(good.statusCode, 200);
+  } finally {
+    delete process.env.STRAWPING_ADMIN_PASSWORD_HASH;
+  }
+});
+
+test("a revoked or unknown session is rejected even with a valid signature", async () => {
+  const session = signedSession();
+  globalThis.fetch = withSessionStore(async () => reply([]), { active: false });
+  const response = await handler(
+    event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+  );
+  assert.equal(response.statusCode, 401);
+});
+
+test("session verification fails closed when the session store is down", async () => {
+  const session = signedSession();
+  globalThis.fetch = async () => new Response("{}", { status: 500 });
+  const response = await handler(
+    event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+  );
+  assert.equal(response.statusCode, 500);
+});
+
+test("old-format tokens and tokens from before a password change are rejected", async () => {
+  globalThis.fetch = withSessionStore(async () => reply([]));
+  const legacy = signedSession({ overrides: { typ: undefined, iss: undefined, aud: undefined } });
+  const stale = signedSession({ overrides: { cv: "0".repeat(24) } });
+  for (const session of [legacy, stale]) {
+    const response = await handler(
+      event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+    );
+    assert.equal(response.statusCode, 401);
+  }
+});
+
+test("logout revokes the session on the server", async () => {
+  const session = signedSession();
+  let revoked = false;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).includes("store_sessions") && options.method === "PATCH") {
+      revoked = Boolean(JSON.parse(options.body).revoked_at);
+      return new Response(null, { status: 204 });
+    }
+    if (String(url).includes("store_sessions")) return reply([{ session_id_hash: "x" }]);
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const response = await handler(
+    event("/auth/logout", "POST", {}, { authorization: `Bearer ${session.token}` })
+  );
+  assert.equal(response.statusCode, 200);
+  assert.equal(revoked, true);
+});
+
+test("order ids are validated before they reach the database path", async () => {
+  const session = signedSession();
+  globalThis.fetch = withSessionStore(async () => {
+    throw new Error("database must not be reached for an invalid order id");
+  });
+  const headers = { authorization: `Bearer ${session.token}`, "x-csrf-token": session.csrfToken };
+  const patch = await handler(
+    event("/orders/" + encodeURIComponent("x&select=*"), "PATCH", { csrfToken: session.csrfToken, status: "Shipped" }, headers)
+  );
+  assert.equal(patch.statusCode, 400);
+  const del = await handler(
+    event("/orders/" + encodeURIComponent("a,b)"), "DELETE", { csrfToken: session.csrfToken }, headers)
+  );
+  assert.equal(del.statusCode, 400);
+  const malformed = await handler(event("/orders/%E0%A4%A", "GET"));
+  assert.equal(malformed.statusCode, 400);
+});
+
+test("API responses carry defense-in-depth security headers", async () => {
+  const response = await handler(event("/status"));
+  assert.equal(response.headers["x-frame-options"], "DENY");
+  assert.match(response.headers["strict-transport-security"], /max-age=\d+/);
+  assert.match(response.headers["content-security-policy"], /frame-ancestors 'none'/);
+  assert.ok(response.headers["permissions-policy"]);
+});
+
+test("unexpected server errors return a request id and no internals", async () => {
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  globalThis.fetch = async () => new Response("{}", { status: 500 });
+  try {
+    const response = await handler(event("/products"));
+    const body = JSON.parse(response.body);
+    assert.equal(response.statusCode, 500);
+    assert.equal(body.error, "Server error");
+    assert.match(body.requestId, /^[0-9a-f-]{36}$/);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});

@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.netlify
+.vercel/
+node_modules/
+.DS_Store
+Thumbs.db
+.clineignore
+*.md
+skills-lock.json
+.agents/

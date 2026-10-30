@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Strawping - Aesthetic Goods & Essentials</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/storefront.css">
+</head>
+<body class="storefront">
+
+  <!-- ANNOUNCEMENT -->
+  <div id="announcement-bar" class="announcement-bar">
+    <span id="announcement-text">Welcome to Strawping! Free doorstep delivery on all orders.</span>
+    <span class="announcement-sep" aria-hidden="true">|</span>
+    <a href="#collection" class="announcement-link">Shop now</a>
+  </div>
+
+  <!-- PRIMARY NAVIGATION -->
+  <header class="site-header">
+    <div class="site-nav">
+      <button id="menu-btn" class="icon-btn menu-trigger" type="button" aria-label="Open menu" aria-controls="mobile-menu" aria-expanded="false">
+        <svg aria-hidden="true" width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <a href="#top" class="brand brand-nav" aria-label="Strawping home"><span id="store-nav-title">Strawping</span></a>
+      <nav id="desktop-links" class="desktop-links" aria-label="Main navigation">
+        <a href="#collection">Shop all</a>
+        <a href="#story">Our story</a>
+      </nav>
+      <div class="nav-actions">
+        <button id="search-btn" class="icon-btn" type="button" aria-label="Search products" aria-controls="search-overlay">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </button>
+        <button id="cart-btn" class="icon-btn cart-trigger" type="button" title="Open bag" aria-label="Open shopping bag">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg>
+          <span id="cart-badge" class="cart-badge" hidden>0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- EDITORIAL HERO -->
+    <section class="hero" aria-labelledby="hero-heading">
+      <div class="hero-copy">
+        <p class="eyebrow">A considered collection</p>
+        <h1 id="hero-heading" class="display hero-title">Little things,<br>better days.</h1>
+        <p id="hero-tagline" class="hero-tagline">Thoughtfully crafted lifestyle essentials and aesthetic goods.</p>
+        <a href="#collection" class="link-cta">
+          Explore the collection
+          <span class="link-cta-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg></span>
+        </a>
+      </div>
+      <div class="hero-media" aria-label="Featured from the collection">
+        <div id="hero-default-art" class="hero-default-art" aria-hidden="true">
+          <span class="hero-default-ring"></span>
+          <span class="hero-default-ring hero-default-ring-two"></span>
+          <span class="display hero-default-mark">s.</span>
+          <span class="hero-label">Objects for the everyday / 01</span>
+        </div>
+        <div id="hero-spotlight" class="hero-spotlight" hidden>
+          <img id="hero-spotlight-image" src="" alt="">
+          <div class="hero-spotlight-card">
+            <div>
+              <span id="hero-spotlight-category" class="hero-spotlight-category">Curated object</span>
+              <p id="hero-spotlight-name" class="hero-spotlight-name">A little favorite</p>
+            </div>
+            <button data-action="quick-buy" id="hero-spotlight-buy" class="hero-spotlight-buy" type="button" aria-label="Shop featured product">
+              Shop now
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SHOP BY CATEGORY (filled from the catalog) -->
+    <section id="categories" class="categories-section" aria-labelledby="categories-heading" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow eyebrow-muted">Curated for you</p>
+          <h2 id="categories-heading" class="display section-title">Shop by category</h2>
+        </div>
+        <a href="#collection" class="text-link">View all
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+        </a>
+      </div>
+      <div id="category-tiles" class="category-tiles"></div>
+    </section>
+
+    <!-- PRODUCT COLLECTION -->
+    <section id="collection" class="collection-section" aria-labelledby="collection-heading">
+      <div class="collection-inner">
+        <div class="collection-heading">
+          <div>
+            <p class="eyebrow eyebrow-accent">The collection</p>
+            <h2 id="collection-heading" class="display collection-title">Find your everyday favorite.</h2>
+          </div>
+          <p class="collection-intro">Small details, thoughtfully selected. Made to feel right at home.</p>
+        </div>
+
+        <div class="collection-toolbar">
+          <div id="category-pills" class="category-pills" aria-label="Filter by category">
+            <button class="cat-pill active" data-category="All" type="button">All items</button>
+          </div>
+          <div class="collection-meta">
+            <span id="product-count-label" class="product-count">0 items</span>
+            <label class="stock-filter"><input type="checkbox" id="in-stock-only"><span class="filter-check" aria-hidden="true"></span> In stock</label>
+            <label class="sort-control">
+              <span class="visually-hidden">Sort products</span>
+              <select id="sort-select">
+                <option value="featured">Featured</option>
+                <option value="price-asc">Price: low to high</option>
+                <option value="price-desc">Price: high to low</option>
+              </select>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m8 10 4 4 4-4"/></svg>
+            </label>
+          </div>
+        </div>
+
+        <div id="search-chip" class="search-chip" hidden>
+          <span>Results for “<span id="search-chip-text"></span>”</span>
+          <button id="clear-search-btn" type="button" aria-label="Clear search">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+
+        <div id="products-grid" class="products-grid"></div>
+        <div id="empty-state" class="empty-state hidden">
+          <p class="eyebrow eyebrow-muted">Nothing here just yet</p>
+          <h3 class="display">No products found</h3>
+          <p>Try another search or category. The good things are just around the corner.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- BRAND STORY -->
+    <section id="story" class="story-section" aria-labelledby="story-heading">
+      <div class="story-media">
+        <img id="story-image" src="" alt="" hidden>
+        <div id="story-default-art" class="story-default-art" aria-hidden="true"><span class="display">Strawping</span></div>
+      </div>
+      <div class="story-panel">
+        <p class="eyebrow eyebrow-light">Our point of view</p>
+        <h2 id="story-heading" class="display story-title">Good things should<br>feel good.</h2>
+        <p class="story-copy">From the first look to the doorstep: a considered mix of everyday goods, easy ordering, and direct delivery. Take your time, and find the one that feels like you.</p>
+        <a href="#collection" class="link-cta link-cta-light">
+          See what’s in store
+          <span class="link-cta-icon"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg></span>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-grid">
+        <div>
+          <a href="#top" class="brand footer-brand"><span id="footer-store-name" data-store-name>Strawping</span></a>
+          <h2 class="display footer-title">Thoughtfully chosen for the everyday.</h2>
+          <a id="footer-telegram" class="footer-contact" href="https://t.me/didaoeng" target="_blank" rel="noopener noreferrer" hidden>
+            Message us on Telegram
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+          </a>
+        </div>
+        <div class="footer-links">
+          <div>
+            <p class="footer-heading">Shop</p>
+            <a href="#collection">All items</a>
+            <a href="#categories" id="footer-categories-link">Categories</a>
+            <a href="#story">Our story</a>
+          </div>
+          <div>
+            <p class="footer-heading">Help</p>
+            <button type="button" data-open-cart>Your bag</button>
+            <a href="#collection">Find a favorite</a>
+            <a href="#top">Back to top</a>
+          </div>
+        </div>
+        <div>
+          <p class="footer-heading">Doorstep delivery</p>
+          <p class="footer-note">Pay when your order arrives. We’ll confirm the details with you on Telegram or by phone.</p>
+          <a href="#collection" class="text-link footer-cta">Start shopping
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+          </a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© <span id="copyright-year">2026</span> <span data-store-name>Strawping</span>. All rights reserved.</p>
+        <a href="#top" class="back-to-top">Back to top</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- MOBILE MENU -->
+  <div id="mobile-menu" class="mobile-menu" aria-hidden="true">
+    <div class="mobile-menu-head">
+      <span class="brand mobile-menu-brand" data-store-name>Strawping</span>
+      <button id="close-menu-btn" class="icon-btn" type="button" aria-label="Close menu">
+        <svg aria-hidden="true" width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <nav id="mobile-menu-links" class="display mobile-menu-links" aria-label="Mobile navigation"></nav>
+    <p class="mobile-menu-note">Doorstep delivery · Pay on arrival</p>
+  </div>
+
+  <!-- SEARCH OVERLAY -->
+  <div id="search-overlay" class="search-overlay" aria-hidden="true">
+    <div class="search-panel" role="dialog" aria-modal="true" aria-labelledby="search-title">
+      <div class="search-panel-head">
+        <p id="search-title" class="search-title"><span data-store-name>Strawping</span> search</p>
+        <button id="close-search-btn" class="icon-btn" type="button" aria-label="Close search">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <form id="search-form" class="search-field" role="search">
+        <input type="search" id="search-input" placeholder="What are you looking for?" aria-label="Search products" autocomplete="off">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      </form>
+      <div class="search-foot">
+        <p id="search-suggestions" class="search-suggestions"></p>
+        <button id="search-results-btn" class="search-results-btn" type="button">View results</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CART SLIDE-OVER DRAWER -->
+  <div id="cart-drawer-backdrop" class="drawer-backdrop"></div>
+
+  <aside id="cart-drawer" class="cart-drawer" aria-label="Shopping bag" aria-hidden="true">
+    <div class="drawer-head">
+      <h2 class="display">Your bag <span class="drawer-count">(<span id="drawer-cart-count">0</span>)</span></h2>
+      <button id="close-cart-btn" class="icon-btn" type="button" aria-label="Close bag">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+
+    <div id="cart-items-container" class="cart-items"></div>
+
+    <div id="cart-empty-state" class="cart-empty hidden">
+      <svg aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6L5 8Z"/><path d="M9 9V6a3 3 0 0 1 6 0v3"/></svg>
+      <h3 class="display">Your bag is empty</h3>
+      <p>Explore our curated collection to find your favorites.</p>
+      <button id="cart-shop-now-btn" class="btn-solid" type="button">Start shopping</button>
+    </div>
+
+    <div id="cart-footer" class="cart-footer">
+      <div class="cart-summary">
+        <div><span>Subtotal</span><span id="cart-subtotal">$0.00</span></div>
+        <div><span>Delivery</span><span>Free</span></div>
+        <div class="cart-summary-total"><span>Total</span><span id="cart-total">$0.00</span></div>
+      </div>
+      <button id="proceed-checkout-btn" class="btn-solid btn-block" type="button">
+        <span>Proceed to checkout</span>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+      </button>
+      <p class="cart-footnote">Payment is due upon delivery</p>
+    </div>
+  </aside>
+
+  <!-- CHECKOUT MODAL -->
+  <div id="checkout-modal" class="checkout-modal hidden">
+    <div class="checkout-panel" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+
+      <div class="checkout-head">
+        <div>
+          <p class="eyebrow eyebrow-muted">Checkout</p>
+          <h3 id="checkout-title" class="display">Complete your order</h3>
+          <p class="checkout-sub">Enter your details so we can arrange delivery.</p>
+        </div>
+        <button id="close-checkout-modal-btn" class="icon-btn" type="button" aria-label="Close checkout">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+
+      <form id="checkout-form" class="checkout-form">
+        <div class="field">
+          <label for="order-name">Full name <span class="req">*</span></label>
+          <input type="text" id="order-name" required placeholder="e.g. Alex Johnson" autocomplete="name">
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="order-telegram"><span>Telegram name</span><span class="field-hint">Recommended</span></label>
+            <div class="input-prefix">
+              <span aria-hidden="true">@</span>
+              <input type="text" id="order-telegram" placeholder="username or name">
+            </div>
+          </div>
+          <div class="field">
+            <label for="order-phone">Phone number <span class="req">*</span></label>
+            <input type="tel" id="order-phone" required placeholder="Enter phone number" autocomplete="tel">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="order-email">Email address <span class="req">*</span></label>
+          <input type="email" id="order-email" required placeholder="yourname@example.com" autocomplete="email">
+        </div>
+
+        <div class="field">
+          <label for="order-address">Delivery address <span class="field-hint">Optional</span></label>
+          <button type="button" id="get-location-btn" class="btn-outline btn-block location-btn">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+            <span id="get-location-btn-text">Auto-detect my live location</span>
+          </button>
+          <div id="location-status-badge" class="location-status hidden"></div>
+          <textarea id="order-address" rows="2" placeholder="Street address, building, unit, city, postal code (optional)" autocomplete="street-address"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="order-notes">Delivery instructions / notes <span class="field-hint">Optional</span></label>
+          <input type="text" id="order-notes" placeholder="e.g. Please message me on Telegram before arriving">
+        </div>
+
+        <div class="checkout-total">
+          <span>Total due upon delivery</span>
+          <span id="modal-order-total">$0.00</span>
+        </div>
+
+        <button type="submit" id="submit-order-btn" class="btn-solid btn-block">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4 18-7Z"/></svg>
+          <span>Place order</span>
+        </button>
+      </form>
+
+      <!-- SUCCESS CONFIRMATION STATE (Hidden initially) -->
+      <div id="order-success-state" class="order-success hidden">
+        <div class="success-mark">
+          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+        </div>
+        <p class="eyebrow eyebrow-accent">Thank you</p>
+        <h3 class="display">Order confirmed</h3>
+        <p class="success-copy">Your order <span id="confirmed-order-id" class="order-id">#ORD-000000</span> has been received.</p>
+        <div id="telegram-status-pill" class="status-pill">
+          <span>Notification dispatched</span>
+        </div>
+        <p class="success-note">We will contact you shortly via Telegram or phone to confirm and arrange your delivery.</p>
+        <button id="finish-order-btn" class="btn-solid btn-block" type="button">Continue browsing</button>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- SCRIPTS -->
+  <script src="js/shared/config.js"></script>
+  <script src="js/shared/store-db.js"></script>
+  <script src="js/storefront/app.js"></script>
+</body>
+</html>

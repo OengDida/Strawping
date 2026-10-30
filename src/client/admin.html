@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Store Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+  <!-- AUTH GATE / LOGIN SCREEN (Shown if not logged in) -->
+  <div id="auth-gate" class="auth-gate">
+    <div class="auth-card">
+      <a href="index.html" class="brand auth-brand">Strawping</a>
+      <p class="eyebrow">Admin access</p>
+      <h1 class="display auth-title">Welcome back.</h1>
+      <p class="auth-sub">Enter your secure admin password</p>
+
+      <form id="login-form">
+        <input
+          type="password"
+          id="login-pin"
+          autocomplete="current-password"
+          placeholder="Admin password"
+          aria-label="Admin password"
+          required
+        />
+        <button type="submit" class="btn-solid btn-block">Unlock admin panel</button>
+      </form>
+
+      <div class="auth-foot">
+        <a href="index.html">&larr; Back to store</a>
+        <span>Secure admin sign-in</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN ADMIN APP (Hidden until authenticated) -->
+  <div id="admin-app" class="hidden">
+
+    <!-- TOP NAVBAR -->
+    <header class="admin-header">
+      <div class="admin-header-inner">
+
+        <div class="admin-title">
+          <div class="admin-title-row">
+            <h1 class="display">Store Control Center</h1>
+            <span class="chip chip-solid">Admin</span>
+          </div>
+          <p id="admin-store-name-sub">Managing: Strawping</p>
+        </div>
+
+        <div class="admin-actions">
+          <div id="admin-sync-status" class="sync-status">
+            <span id="admin-sync-dot" class="sync-dot"></span>
+            <span id="admin-sync-status-text">Checking Server...</span>
+          </div>
+
+          <a href="index.html" target="_blank" rel="noopener" class="live-link">
+            <span>View live store</span>
+            <svg aria-hidden="true" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>
+          </a>
+
+          <button id="admin-logout-btn" class="icon-btn" type="button" title="Log out" aria-label="Log out">
+            <svg aria-hidden="true" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- ADMIN CONTENT -->
+    <main class="admin-main">
+
+      <!-- NAVIGATION TABS -->
+      <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+        <button class="nav-tab active" type="button" role="tab" aria-selected="true" data-tab="products">
+          <span>Products</span>
+          <span id="tab-products-badge" class="tab-badge">0</span>
+        </button>
+        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="orders">
+          <span>Orders</span>
+          <span id="tab-orders-badge" class="tab-badge">0</span>
+        </button>
+        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="customization">Store customizer</button>
+        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="telegram">Telegram bot</button>
+        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="database">Database security</button>
+        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="backup">Backup &amp; reset</button>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 1: PRODUCTS MANAGER -->
+      <!-- ========================================== -->
+      <section id="tab-content-products" class="tab-pane" role="tabpanel">
+        <div class="pane-head">
+          <div>
+            <p class="eyebrow">Catalog</p>
+            <h2 class="display pane-title">Product catalog</h2>
+            <p class="pane-sub">Add, edit prices, descriptions, and stock status (persisted to server)</p>
+          </div>
+          <button id="open-add-product-btn" class="btn-solid" type="button">
+            <svg aria-hidden="true" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12M6 12h12"/></svg>
+            <span>Add new product</span>
+          </button>
+        </div>
+
+        <!-- Products Table / List -->
+        <div class="table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Category</th>
+                <th scope="col">Price</th>
+                <th scope="col">Stock status</th>
+                <th scope="col" class="col-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-products-table-body">
+              <!-- Injected via JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 2: ORDERS MANAGER -->
+      <!-- ========================================== -->
+      <section id="tab-content-orders" class="tab-pane hidden" role="tabpanel">
+        <div class="pane-head">
+          <div>
+            <p class="eyebrow">Fulfilment</p>
+            <h2 class="display pane-title">Customer orders</h2>
+            <p class="pane-sub">Orders placed by customers through your storefront</p>
+          </div>
+        </div>
+
+        <div id="orders-list-container" class="orders-list">
+          <!-- Injected via JavaScript -->
+        </div>
+
+        <div id="orders-empty-state" class="empty-state hidden">
+          <h3 class="display">No orders yet</h3>
+          <p>Orders placed on your store will appear here and in your Telegram.</p>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 3: STORE CUSTOMIZER -->
+      <!-- ========================================== -->
+      <section id="tab-content-customization" class="tab-pane hidden" role="tabpanel">
+        <div class="panel panel-narrow">
+          <div>
+            <p class="eyebrow">Branding</p>
+            <h2 class="display panel-title">Store customization</h2>
+            <p class="panel-sub">Customize your store's branding, slogans, and currency</p>
+          </div>
+
+          <form id="store-settings-form" class="form-stack">
+            <div class="field">
+              <label for="setting-store-name">Store name</label>
+              <input type="text" id="setting-store-name" required />
+
+<div class="field">
+  <label for="setting-telegram-handle">Telegram Handle</label>
+  <input type="text" id="setting-telegram-handle" placeholder="@username" required />
+  <p class="field-hint">Include the '@' symbol (e.g., @didaoeng)</p>
+</div>
+            </div>
+
+            <div class="field">
+              <label for="setting-tagline">Hero tagline / subtitle</label>
+              <input type="text" id="setting-tagline" required />
+            </div>
+
+            <div class="field">
+              <label for="setting-currency">Currency symbol</label>
+              <input type="text" id="setting-currency" class="w-short mono" maxlength="5" placeholder="$ or € or £ or Rp" required />
+            </div>
+
+            <!-- Top Announcement Banner -->
+            <div class="setting-block">
+              <div class="toggle-row">
+                <div>
+                  <h4>Announcement banner</h4>
+                  <p>Top promotional notification bar on the storefront</p>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="setting-announcement-active" aria-label="Show announcement banner">
+                  <span class="switch-track"></span>
+                </label>
+              </div>
+              <div class="field">
+                <input type="text" id="setting-announcement-text" aria-label="Announcement text" placeholder="e.g. Free delivery on orders over $50!" />
+              </div>
+            </div>
+
+            <!-- Admin Security PIN -->
+            <div class="setting-block">
+              <div class="field">
+                <label for="setting-admin-pin">Admin passcode / PIN</label>
+                <input type="text" id="setting-admin-pin" class="w-mid mono" required placeholder="Enter a store setting PIN" />
+                <p class="field-hint">Admin password is managed securely in server environment variables.</p>
+              </div>
+            </div>
+
+            <button type="submit" class="btn-solid btn-block">Save store settings</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 4: TELEGRAM BOT INTEGRATION -->
+      <!-- ========================================== -->
+      <section id="tab-content-telegram" class="tab-pane hidden" role="tabpanel">
+        <div class="two-col">
+          <div class="panel">
+            <div>
+              <p class="eyebrow">Notifications</p>
+              <h2 class="display panel-title">Telegram notifications</h2>
+              <p class="panel-sub">Order alerts are sent by the secure server-side API.</p>
+            </div>
+            <div class="callout">
+              <strong>Configuration is managed in your hosting dashboard</strong>
+              <p>For security, the bot token is not entered or saved on this page. It stays on the server and is never sent to storefront visitors.</p>
+              <div class="token-row"><code>TELEGRAM_BOT_TOKEN</code><code>TELEGRAM_CHAT_ID</code></div>
+            </div>
+            <button type="button" id="test-telegram-btn" class="btn-solid btn-block"><span>Test Telegram Ping</span></button>
+            <div id="telegram-test-result" role="status" aria-live="polite" class="result-box hidden"></div>
+          </div>
+
+          <div class="panel">
+            <div>
+              <p class="eyebrow">Setup</p>
+              <h3 class="display panel-title">Setup guide</h3>
+            </div>
+            <ol class="guide-list">
+              <li>In Telegram, open <code>@BotFather</code>, send <code>/newbot</code>, and follow its prompts. Keep the bot token private.</li>
+              <li>Open a chat with your new bot and press <strong>Start</strong> or send <code>/start</code>.</li>
+              <li>Get your numeric Telegram chat ID using a trusted chat-ID bot, or from your bot's updates after sending it a message.</li>
+              <li>In your hosting dashboard, open project settings → <strong>Environment Variables</strong>. Add <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code>.</li>
+              <li>Save the variables and trigger a new deploy so the function uses the updated configuration.</li>
+              <li>Return here and click <strong>Test Telegram Ping</strong>. The recipient must have started the bot first.</li>
+            </ol>
+            <p class="warning">Never paste the token into this page, browser storage, GitHub, or chat. If exposed, revoke it through BotFather and replace the server environment variable.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 5: DATABASE SECURITY -->
+      <!-- ========================================== -->
+      <section id="tab-content-database" class="tab-pane hidden" role="tabpanel">
+        <div class="panel panel-medium">
+          <div>
+            <p class="eyebrow">Security</p>
+            <h2 class="display panel-title">Database access is server-managed</h2>
+            <p class="panel-sub">The storefront and admin use the secured server API.</p>
+          </div>
+          <ul class="bullet-list">
+            <li>Apply the reviewed <code>database/schema.sql</code> from your project repository in the Supabase SQL Editor.</li>
+            <li>Keep Row Level Security enabled. Do not add broad policies that grant access to <code>anon</code> or <code>authenticated</code>.</li>
+            <li>Store <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> only in server environment variables. Never enter them into a browser form or commit them to Git.</li>
+            <li>The service-role key bypasses RLS. Treat it as a secret and rotate it immediately if it has been exposed.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 6: BACKUP & RESET -->
+      <!-- ========================================== -->
+      <section id="tab-content-backup" class="tab-pane hidden" role="tabpanel">
+        <div class="panel panel-narrow">
+          <div>
+            <p class="eyebrow">Data</p>
+            <h2 class="display panel-title">Data storage &amp; backup</h2>
+            <p class="panel-sub">Export or import your entire store catalog, settings, and orders</p>
+          </div>
+
+          <div class="form-stack">
+            <div class="action-row">
+              <div>
+                <h4>Export store backup (JSON)</h4>
+                <p>Download a full snapshot of your products, settings, and order history.</p>
+              </div>
+              <button id="export-backup-btn" class="btn-outline btn-sm" type="button">Export</button>
+            </div>
+
+            <div class="action-row">
+              <div>
+                <h4>Import store backup</h4>
+                <p>Restore store data from a previously downloaded JSON backup.</p>
+              </div>
+              <label class="btn-outline btn-sm file-btn">
+                <span>Import JSON</span>
+                <input type="file" id="import-backup-input" accept=".json" class="hidden" />
+              </label>
+            </div>
+
+            <div class="action-row is-danger">
+              <div>
+                <h4>Reset to default sample data</h4>
+                <p>Reset products, settings, and delete all orders to clean demo state.</p>
+              </div>
+              <button id="reset-defaults-btn" class="btn-solid btn-danger btn-sm" type="button">Reset</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- PRODUCT ADD/EDIT MODAL -->
+  <div id="product-modal" class="modal hidden">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="product-modal-title">
+
+      <div class="modal-head">
+        <h3 id="product-modal-title" class="display">Add New Product</h3>
+        <button id="close-product-modal-btn" class="icon-btn" type="button" aria-label="Close">
+          <svg aria-hidden="true" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+
+      <form id="product-form" class="modal-form">
+        <input type="hidden" id="prod-id" />
+
+        <div class="field">
+          <label for="prod-name">Product title</label>
+          <input type="text" id="prod-name" required placeholder="e.g. Wireless Noise-Cancelling Headphones" />
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="prod-category">Category</label>
+            <input type="text" id="prod-category" required placeholder="e.g. Tech, Apparel, Home" />
+          </div>
+          <div class="field">
+            <label for="prod-price">Price</label>
+            <input type="number" step="0.01" min="0" id="prod-price" class="mono" required placeholder="e.g. 49.99" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="prod-image">Image URL</label>
+          <input type="url" id="prod-image" placeholder="https://images.unsplash.com/..." />
+          <p class="field-hint">Paste any direct image link or Unsplash photo link.</p>
+        </div>
+
+        <div class="field">
+          <label for="prod-description">Description</label>
+          <textarea id="prod-description" rows="3" placeholder="Describe the product features, sizing, or materials..."></textarea>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <h4>In stock status</h4>
+            <p>If toggled off, customers will see "Sold Out".</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="prod-instock" checked aria-label="In stock">
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <button type="submit" id="save-prod-btn" class="btn-solid btn-block">Save product</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="js/shared/config.js"></script>
+  <script src="js/shared/store-db.js"></script>
+  <script src="js/admin/admin.js"></script>
+</body>
+</html>
