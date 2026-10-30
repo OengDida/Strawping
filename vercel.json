@@ -5,6 +5,14 @@
     {
       "source": "/api/:path*",
       "destination": "/api/router?route=:path*"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/",
+      "destination": "/index.html"
     }
   ],
   "headers": [
