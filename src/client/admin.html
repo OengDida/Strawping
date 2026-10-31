@@ -87,8 +87,6 @@
         </button>
         <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="customization">Store customizer</button>
         <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="telegram">Telegram bot</button>
-        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="database">Database security</button>
-        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="backup">Backup &amp; reset</button>
       </div>
 
       <!-- ========================================== -->
@@ -164,11 +162,6 @@
               <label for="setting-store-name">Store name</label>
               <input type="text" id="setting-store-name" required />
 
-<div class="field">
-  <label for="setting-telegram-handle">Telegram Handle</label>
-  <input type="text" id="setting-telegram-handle" placeholder="@username" required />
-  <p class="field-hint">Include the '@' symbol (e.g., @didaoeng)</p>
-</div>
             </div>
 
             <div class="field">
@@ -195,15 +188,6 @@
               </div>
               <div class="field">
                 <input type="text" id="setting-announcement-text" aria-label="Announcement text" placeholder="e.g. Free delivery on orders over $50!" />
-              </div>
-            </div>
-
-            <!-- Admin Security PIN -->
-            <div class="setting-block">
-              <div class="field">
-                <label for="setting-admin-pin">Admin passcode / PIN</label>
-                <input type="text" id="setting-admin-pin" class="w-mid mono" required placeholder="Enter a store setting PIN" />
-                <p class="field-hint">Admin password is managed securely in server environment variables.</p>
               </div>
             </div>
 
@@ -246,67 +230,6 @@
               <li>Return here and click <strong>Test Telegram Ping</strong>. The recipient must have started the bot first.</li>
             </ol>
             <p class="warning">Never paste the token into this page, browser storage, GitHub, or chat. If exposed, revoke it through BotFather and replace the server environment variable.</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ========================================== -->
-      <!-- TAB 5: DATABASE SECURITY -->
-      <!-- ========================================== -->
-      <section id="tab-content-database" class="tab-pane hidden" role="tabpanel">
-        <div class="panel panel-medium">
-          <div>
-            <p class="eyebrow">Security</p>
-            <h2 class="display panel-title">Database access is server-managed</h2>
-            <p class="panel-sub">The storefront and admin use the secured server API.</p>
-          </div>
-          <ul class="bullet-list">
-            <li>Apply the reviewed <code>database/schema.sql</code> from your project repository in the Supabase SQL Editor.</li>
-            <li>Keep Row Level Security enabled. Do not add broad policies that grant access to <code>anon</code> or <code>authenticated</code>.</li>
-            <li>Store <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code> only in server environment variables. Never enter them into a browser form or commit them to Git.</li>
-            <li>The service-role key bypasses RLS. Treat it as a secret and rotate it immediately if it has been exposed.</li>
-          </ul>
-        </div>
-      </section>
-
-      <!-- ========================================== -->
-      <!-- TAB 6: BACKUP & RESET -->
-      <!-- ========================================== -->
-      <section id="tab-content-backup" class="tab-pane hidden" role="tabpanel">
-        <div class="panel panel-narrow">
-          <div>
-            <p class="eyebrow">Data</p>
-            <h2 class="display panel-title">Data storage &amp; backup</h2>
-            <p class="panel-sub">Export or import your entire store catalog, settings, and orders</p>
-          </div>
-
-          <div class="form-stack">
-            <div class="action-row">
-              <div>
-                <h4>Export store backup (JSON)</h4>
-                <p>Download a full snapshot of your products, settings, and order history.</p>
-              </div>
-              <button id="export-backup-btn" class="btn-outline btn-sm" type="button">Export</button>
-            </div>
-
-            <div class="action-row">
-              <div>
-                <h4>Import store backup</h4>
-                <p>Restore store data from a previously downloaded JSON backup.</p>
-              </div>
-              <label class="btn-outline btn-sm file-btn">
-                <span>Import JSON</span>
-                <input type="file" id="import-backup-input" accept=".json" class="hidden" />
-              </label>
-            </div>
-
-            <div class="action-row is-danger">
-              <div>
-                <h4>Reset to default sample data</h4>
-                <p>Reset products, settings, and delete all orders to clean demo state.</p>
-              </div>
-              <button id="reset-defaults-btn" class="btn-solid btn-danger btn-sm" type="button">Reset</button>
-            </div>
           </div>
         </div>
       </section>
