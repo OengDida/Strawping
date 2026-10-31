@@ -275,6 +275,7 @@ test("order totals and item details are derived from the server catalog", async 
         phone: "123456",
         email: "customer@example.com",
         address: "One Street",
+        coordinates: { latitude: 91, longitude: 104.926033 },
         notes: "Please call"
       },
       items: [{ id: "prod-mug", quantity: 2, name: "Forged name", price: 0.01 }],
@@ -291,6 +292,73 @@ test("order totals and item details are derived from the server catalog", async 
     quantity: 2,
     price: 3.5
   }]);
+  assert.equal(Object.hasOwn(savedOrder.customer, "coordinates"), false);
+});
+
+test("order Telegram notification includes a Google Maps link for detected coordinates", async () => {
+  const previousToken = process.env.TELEGRAM_BOT_TOKEN;
+  const previousChatId = process.env.TELEGRAM_CHAT_ID;
+  process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
+  process.env.TELEGRAM_CHAT_ID = "test-chat-id";
+  let savedOrder;
+  let telegramMessage;
+
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
+    if (requestUrl.includes("key=eq.products")) {
+      return reply([{ value: [{
+        id: "prod-mug",
+        name: "Mug",
+        category: "Home",
+        price: 3.5,
+        image: "",
+        description: "",
+        inStock: true
+      }] }]);
+    }
+    if (requestUrl.endsWith("/rest/v1/store_orders") && options.method === "POST") {
+      savedOrder = JSON.parse(options.body);
+      return reply([savedOrder]);
+    }
+    if (requestUrl.endsWith("/sendMessage")) {
+      telegramMessage = JSON.parse(options.body).text;
+      return reply({ ok: true });
+    }
+    throw new Error(`Unexpected request: ${requestUrl}`);
+  };
+
+  try {
+    const response = await handler(
+      event("/orders", "POST", {
+        customer: {
+          name: "Customer",
+          phone: "123456",
+          email: "customer@example.com",
+          address: "One Street",
+          coordinates: { latitude: 11.516667, longitude: 104.926033 }
+        },
+        items: [{ id: "prod-mug", quantity: 1 }]
+      }),
+      { ip: "203.0.113.10" }
+    );
+
+    assert.equal(response.statusCode, 201);
+    assert.deepEqual(savedOrder.customer.coordinates, {
+      latitude: 11.516667,
+      longitude: 104.926033
+    });
+    assert.match(
+      telegramMessage,
+      /Google Maps: https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=11\.516667%2C104\.926033/
+    );
+    assert.equal(JSON.parse(response.body).telegramSent, true);
+  } finally {
+    if (previousToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
+    else process.env.TELEGRAM_BOT_TOKEN = previousToken;
+    if (previousChatId === undefined) delete process.env.TELEGRAM_CHAT_ID;
+    else process.env.TELEGRAM_CHAT_ID = previousChatId;
+  }
 });
 
 test("order creation fails closed when the rate limiter denies the request", async () => {

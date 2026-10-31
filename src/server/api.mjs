@@ -18,7 +18,7 @@ const json = (statusCode, body, extraHeaders = {}) => ({
     "referrer-policy": "no-referrer",
     "x-frame-options": "DENY",
     "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
-    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "permissions-policy": "camera=(), microphone=(), geolocation=(self)",
     "strict-transport-security": "max-age=63072000; includeSubDomains",
     ...extraHeaders
   },
@@ -425,6 +425,7 @@ function normalizeCustomer(value) {
   const telegram = cleanLine(value.telegram ?? "", 80);
   const address = cleanLine(value.address ?? "Not provided (Online / Self-Pickup)", 500);
   const notes = cleanLine(value.notes ?? "", 1000);
+  const coordinates = normalizeCoordinates(value.coordinates);
 
   if (
     name === null || phone === null || email === null ||
@@ -433,7 +434,29 @@ function normalizeCustomer(value) {
   ) {
     return null;
   }
-  return { name, phone, email, telegram, address, notes };
+  return {
+    name,
+    phone,
+    email,
+    telegram,
+    address,
+    notes,
+    ...(coordinates ? { coordinates } : {})
+  };
+}
+
+function normalizeCoordinates(value) {
+  if (!isRecord(value)) return null;
+  const { latitude, longitude } = value;
+  if (
+    typeof latitude !== "number" || !Number.isFinite(latitude) ||
+    typeof longitude !== "number" || !Number.isFinite(longitude) ||
+    latitude < -90 || latitude > 90 ||
+    longitude < -180 || longitude > 180
+  ) {
+    return null;
+  }
+  return { latitude, longitude };
 }
 
 function parseBody(event) {
@@ -451,6 +474,10 @@ function parseBody(event) {
 
 function formatOrderTelegramMessage(order) {
   const customer = order.customer;
+  const coordinates = normalizeCoordinates(customer.coordinates);
+  const mapsLink = coordinates
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coordinates.latitude},${coordinates.longitude}`)}`
+    : "";
   const lines = [
     `🛒 New Strawping order #${order.id}`,
     `Customer: ${customer.name}`,
@@ -458,6 +485,7 @@ function formatOrderTelegramMessage(order) {
     customer.telegram ? `Telegram: ${customer.telegram}` : "",
     customer.email ? `Email: ${customer.email}` : "",
     `Address: ${customer.address}`,
+    mapsLink ? `📍 Google Maps: ${mapsLink}` : "",
     customer.notes ? `Notes: ${customer.notes}` : "",
     "",
     "Items:",

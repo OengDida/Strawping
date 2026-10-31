@@ -64,6 +64,7 @@ let inStockOnly = false;
 let sortOrder = "featured";
 let wishlist = loadWishlist();
 let toastTimer = null;
+let detectedCoordinates = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Bind checkout and location controls immediately. Store sync should not prevent
@@ -642,6 +643,11 @@ function setupLocationDetector() {
 
   if (!btn || !addressInput) return;
 
+  // Do not send stale GPS coordinates if the customer manually changes the address.
+  addressInput.addEventListener("input", () => {
+    detectedCoordinates = null;
+  });
+
   btn.addEventListener("click", () => {
     // Browser geolocation requires HTTPS (or localhost); fail with a useful
     // message instead of silently appearing not to request permission.
@@ -664,6 +670,7 @@ function setupLocationDetector() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         const accuracy = Math.round(pos.coords.accuracy || 0);
+        detectedCoordinates = { latitude: lat, longitude: lon };
 
         btnText.innerHTML = `${SPINNER}<span>Resolving street address…</span>`;
 
@@ -806,6 +813,7 @@ function setupEventListeners() {
         phone: document.getElementById("order-phone").value.trim(),
         email: emailVal,
         address: document.getElementById("order-address").value.trim() || "Not provided (Online / Self-Pickup)",
+        coordinates: detectedCoordinates,
         notes: document.getElementById("order-notes").value.trim()
       },
       items: cart.map(item => ({ id: item.id, quantity: item.quantity }))
@@ -833,6 +841,7 @@ function setupEventListeners() {
       cart = [];
       updateCartUI();
       form.reset();
+      detectedCoordinates = null;
       document.getElementById("location-status-badge")?.classList.add("hidden");
 
       // Show success modal state
