@@ -3,8 +3,12 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 }
 function safeImageUrl(value, fallback = "") {
-  try { const u = new URL(String(value || fallback), window.location.origin); return ["http:","https:"].includes(u.protocol) ? u.href : fallback; }
-  catch { return fallback; }
+  try {
+    const url = new URL(String(value || fallback), window.location.origin);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 // ==========================================
@@ -23,11 +27,12 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // === AUTHENTICATION ===
-function checkAuth() {
+async function checkAuth() {
   const authGate = document.getElementById("auth-gate");
   const adminApp = document.getElementById("admin-app");
+  const authenticated = await StoreDB.isAuthenticated();
 
-  if (StoreDB.isAuthenticated()) {
+  if (authenticated) {
     authGate.classList.add("hidden");
     adminApp.classList.remove("hidden");
     loadAllAdminData();
@@ -50,7 +55,7 @@ function setupAuth() {
     try {
       await StoreDB.login(pin);
       loginPinInput.value = "";
-      checkAuth();
+      await checkAuth();
     } catch (err) {
       alert(err.message || "Login failed. Check your admin password.");
       loginPinInput.focus();
@@ -59,10 +64,15 @@ function setupAuth() {
     }
   });
 
-  logoutBtn?.addEventListener("click", () => {
+  logoutBtn?.addEventListener("click", async () => {
     if (confirm("Log out of Admin Panel?")) {
-      StoreDB.logout();
-      checkAuth();
+      try {
+        await StoreDB.logout();
+      } catch (err) {
+        alert(err.message || "Logout could not be confirmed by the server.");
+      } finally {
+        await checkAuth();
+      }
     }
   });
 }

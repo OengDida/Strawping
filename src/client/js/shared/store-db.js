@@ -9,18 +9,16 @@ const DEFAULT_SETTINGS = {
 };
 const DEFAULT_PRODUCTS = [];
 class StoreDB {
-  static SETTINGS_KEY="telegram_store_settings"; static PRODUCTS_KEY="telegram_store_products"; static AUTH_KEY="strawping_admin_token";
+  static SETTINGS_KEY="telegram_store_settings"; static PRODUCTS_KEY="telegram_store_products";
   // Sync status exposed to the UI so a failed server sync is visible instead of silent.
   static lastSyncOk=false; static lastSyncError=null; static lastSyncProducts=null; static lastSyncSettings=null;
   static getSyncStatus(){return{ok:!!this.lastSyncOk,error:this.lastSyncError}}
-  static token(){return sessionStorage.getItem(this.AUTH_KEY)||""}
   static csrfToken(){return sessionStorage.getItem("strawping_csrf_token")||""}
   static setCsrfToken(token){if(token)sessionStorage.setItem("strawping_csrf_token",token);else sessionStorage.removeItem("strawping_csrf_token")}
   static async request(path, options={}) {
     const headers={"Content-Type":"application/json",...(options.headers||{})};
     const method = options.method ? options.method.toUpperCase() : "GET";
-    if(this.token()) headers.Authorization=`Bearer ${this.token()}`;
-    const needsCsrf = ["PUT","PATCH","DELETE"].includes(method) || path === "notify/test" || path === "images/upload";
+    const needsCsrf = ["PUT","PATCH","DELETE"].includes(method) || path === "notify/test" || path === "images/upload" || path === "auth/logout";
     if(needsCsrf) {
       headers["X-CSRF-Token"]=this.csrfToken();
       let bodyObj = {};
@@ -30,7 +28,7 @@ class StoreDB {
       bodyObj.csrfToken = this.csrfToken();
       options.body = JSON.stringify(bodyObj);
     }
-    const res=await fetch(`/api/${path}`,{...options,headers,cache:"no-store"});
+    const res=await fetch(`/api/${path}`,{...options,headers,cache:"no-store",credentials:"same-origin"});
     const body=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(body.error||`Request failed (${res.status})`);
     return body;
@@ -74,7 +72,7 @@ class StoreDB {
       return {ok:false,products:null,settings:null,error:message};
     }
   }
-  static async initAdminSync(){await this.syncData(); if(this.isAuthenticated()) await this.syncOrdersFromServer();}
+  static async initAdminSync(){await this.syncData(); if(await this.isAuthenticated()) await this.syncOrdersFromServer();}
   static async checkServerStatus(){try{await this.request("status");return true}catch{return false}}
   static getProducts(){try{const x=JSON.parse(localStorage.getItem(this.PRODUCTS_KEY)||"null");return Array.isArray(x)?x:DEFAULT_PRODUCTS}catch{return DEFAULT_PRODUCTS}}
   static async saveProducts(products){
@@ -95,18 +93,27 @@ class StoreDB {
   static async addOrder(orderData){const r=await this.request("orders",{method:"POST",body:JSON.stringify(orderData)});return r}
   static async updateOrderStatus(orderId,status){const r=await this.request(`orders/${encodeURIComponent(orderId)}`,{method:"PATCH",body:JSON.stringify({status})});return r.order}
   static async deleteOrder(orderId){await this.request(`orders/${encodeURIComponent(orderId)}`,{method:"DELETE"});return true}
-  static isAuthenticated(){
-    const token=this.token(); if(!token)return false;
-    try { const payload=JSON.parse(atob(token.split(".")[0].replace(/-/g,"+").replace(/_/g,"/"))); if(payload.exp*1000>Date.now())return true; }
-    catch {}
-    this.logout(); return false;
+  static async isAuthenticated(){
+    try {
+      const session=await this.request("auth/session");
+      this.setCsrfToken(session.csrfToken);
+      return true;
+    } catch {
+      this.setCsrfToken(null);
+      return false;
+    }
   }
-  static async login(password){const r=await this.request("auth/login",{method:"POST",headers:{},body:JSON.stringify({password})});sessionStorage.setItem(this.AUTH_KEY,r.token);if(r.csrfToken)this.setCsrfToken(r.csrfToken);return true}
-  static logout(){
-    // Revoke the session on the server (best effort), then clear it locally right away.
-    const token=this.token();
-    if(token){fetch("/api/auth/logout",{method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:"{}",cache:"no-store"}).catch(()=>{});}
-    sessionStorage.removeItem(this.AUTH_KEY);this.setCsrfToken(null)
+  static async login(password){
+    const result=await this.request("auth/login",{method:"POST",body:JSON.stringify({password})});
+    this.setCsrfToken(result.csrfToken);
+    return true;
+  }
+  static async logout(){
+    try {
+      await this.request("auth/logout",{method:"POST",body:"{}"});
+    } finally {
+      this.setCsrfToken(null);
+    }
   }
   static async sendTelegramMessage(){throw new Error("Telegram notifications are sent server-side. Configure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in server environment variables.")}
   static formatOrderTelegramMessage(order,settings){return `New Strawping order #${order.id} — ${settings.storeName||"Strawping"}`}

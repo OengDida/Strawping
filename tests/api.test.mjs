@@ -7,7 +7,14 @@ import vercelHandler from "../api/router.mjs";
 const sessionSecret = "test-session-secret-with-more-than-32-characters";
 process.env.SUPABASE_URL = "https://supabase.example";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
-process.env.STRAWPING_ADMIN_PASSWORD = "test-admin-password";
+const testAdminPassword = "test-admin-password";
+const testAdminSalt = Buffer.from("strawping-test-salt");
+const testAdminHash = crypto.scryptSync(testAdminPassword, testAdminSalt, 32, {
+  N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024
+});
+const testAdminPasswordHash = `scrypt$16384$8$1$${testAdminSalt.toString("base64")}$${testAdminHash.toString("base64")}`;
+process.env.STRAWPING_ADMIN_PASSWORD_HASH = testAdminPasswordHash;
+delete process.env.STRAWPING_ADMIN_PASSWORD;
 process.env.ADMIN_SESSION_SECRET = sessionSecret;
 delete process.env.TELEGRAM_BOT_TOKEN;
 delete process.env.TELEGRAM_CHAT_ID;
@@ -32,6 +39,10 @@ function credentialVersionFor(source) {
   return crypto.createHmac("sha256", sessionSecret).update(`credential-version:${source}`).digest("hex").slice(0, 24);
 }
 
+function sessionHeaders(session, extra = {}) {
+  return { cookie: `__Host-strawping_admin=${session.token}`, ...extra };
+}
+
 function signedSession({
   csrfToken = "c".repeat(64),
   exp = Math.floor(Date.now() / 1000) + 300,
@@ -45,7 +56,7 @@ function signedSession({
     aud: "strawping-admin",
     role: "admin",
     v: 1,
-    cv: credentialVersionFor(process.env.STRAWPING_ADMIN_PASSWORD),
+    cv: credentialVersionFor(process.env.STRAWPING_ADMIN_PASSWORD_HASH),
     sessionId,
     csrfToken,
     iat: now,
@@ -107,7 +118,7 @@ test("admin endpoints reject a forged token even when its payload looks valid", 
     exp: Math.floor(Date.now() / 1000) + 300
   })).toString("base64url");
   const response = await handler(
-    event("/orders", "GET", undefined, { authorization: `Bearer ${encoded}.not-a-valid-signature` }),
+    event("/orders", "GET", undefined, { cookie: `__Host-strawping_admin=${encoded}.not-a-valid-signature` }),
     { ip: "203.0.113.5" }
   );
   assert.equal(response.statusCode, 401);
@@ -166,7 +177,7 @@ test("CSRF validation requires the token from a verified session and matching he
     "PUT",
     { csrfToken: session.csrfToken, storeName: "Changed" },
     {
-      authorization: `Bearer ${session.token}`,
+      cookie: `__Host-strawping_admin=${session.token}`,
       "x-csrf-token": "wrong-token"
     }
   );
@@ -194,7 +205,7 @@ test("product image uploads require an authenticated session and matching CSRF t
     "POST",
     { image: "data:image/jpeg;base64,/9j/AA==", csrfToken: session.csrfToken },
     {
-      authorization: `Bearer ${session.token}`,
+      cookie: `__Host-strawping_admin=${session.token}`,
       "x-csrf-token": "wrong-token"
     }
   ));
@@ -223,7 +234,7 @@ test("authenticated product image uploads store a bounded JPEG and return its pu
     "POST",
     { image: `data:image/jpeg;base64,${imageBytes.toString("base64")}`, csrfToken: session.csrfToken },
     {
-      authorization: `Bearer ${session.token}`,
+      cookie: `__Host-strawping_admin=${session.token}`,
       "x-csrf-token": session.csrfToken
     }
   ));
@@ -245,7 +256,7 @@ test("product image upload rejects non-JPEG content and oversized files", async 
     return reply({});
   };
   const headers = {
-    authorization: `Bearer ${session.token}`,
+    cookie: `__Host-strawping_admin=${session.token}`,
     "x-csrf-token": session.csrfToken
   };
 
@@ -285,7 +296,7 @@ test("a valid signed admin session can update settings with its CSRF token", asy
     "PUT",
     { csrfToken: session.csrfToken, storeName: "New Store", currency: "$" },
     {
-      authorization: `Bearer ${session.token}`,
+      cookie: `__Host-strawping_admin=${session.token}`,
       "x-csrf-token": session.csrfToken
     }
   ));
@@ -458,12 +469,62 @@ test("login with the correct password creates a server-side session and a harden
   );
   assert.equal(response.statusCode, 200);
   const result = JSON.parse(response.body);
-  const payload = JSON.parse(Buffer.from(result.token.split(".")[0], "base64url").toString("utf8"));
+  assert.equal(result.token, undefined, "the bearer token must not be returned to JavaScript");
+  assert.equal(typeof result.csrfToken, "string");
+  const cookie = response.headers["set-cookie"];
+  assert.match(cookie, /^__Host-strawping_admin=/);
+  assert.match(cookie, /; Path=\//);
+  assert.match(cookie, /; Secure/);
+  assert.match(cookie, /; HttpOnly/);
+  assert.match(cookie, /; SameSite=Strict/);
+  const token = cookie.match(/^__Host-strawping_admin=([^;]+)/)[1];
+  const payload = JSON.parse(Buffer.from(token.split(".")[0], "base64url").toString("utf8"));
   assert.equal(payload.iss, "strawping-store");
   assert.equal(payload.aud, "strawping-admin");
   assert.ok(payload.iat && payload.nbf && payload.exp > payload.iat);
   assert.match(storedSession.session_id_hash, /^[0-9a-f]{64}$/);
   assert.notEqual(storedSession.session_id_hash, payload.sessionId);
+});
+
+
+test("admin sessions require the HttpOnly cookie transport, not a bearer header", async () => {
+  const session = signedSession();
+  globalThis.fetch = withSessionStore(async () => reply([{ id: "order-1" }]));
+  const response = await handler(
+    event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+  );
+  assert.equal(response.statusCode, 401);
+});
+
+test("the session endpoint returns CSRF state only to a valid cookie session", async () => {
+  const session = signedSession();
+  globalThis.fetch = withSessionStore(async () => reply([{ session_id_hash: "x" }]));
+  const response = await handler(event("/auth/session", "GET", undefined, sessionHeaders(session)));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).csrfToken, session.csrfToken);
+  const unauthorized = await handler(event("/auth/session", "GET"));
+  assert.equal(unauthorized.statusCode, 401);
+  assert.match(unauthorized.headers["set-cookie"], /Max-Age=0/);
+});
+
+test("login fails closed when only the legacy plaintext password is configured", async () => {
+  const savedHash = process.env.STRAWPING_ADMIN_PASSWORD_HASH;
+  delete process.env.STRAWPING_ADMIN_PASSWORD_HASH;
+  process.env.STRAWPING_ADMIN_PASSWORD = "legacy-test-password";
+  globalThis.fetch = async url => {
+    if (String(url).endsWith("/rpc/consume_rate_limit")) return reply(true);
+    throw new Error("A session must not be created without the password hash");
+  };
+  try {
+    const response = await handler(event("/auth/login", "POST", { password: "legacy-test-password" }), { ip: "203.0.113.22" });
+    assert.equal(response.statusCode, 500);
+    const body = JSON.parse(response.body);
+    assert.equal(body.error, "Server error");
+    assert.match(body.requestId, /^[0-9a-f-]{36}$/i);
+  } finally {
+    process.env.STRAWPING_ADMIN_PASSWORD_HASH = savedHash;
+    delete process.env.STRAWPING_ADMIN_PASSWORD;
+  }
 });
 
 test("login works with a salted scrypt hash and rejects a wrong password", async () => {
@@ -477,12 +538,14 @@ test("login works with a salted scrypt hash and rejects a wrong password", async
       if (requestUrl.includes("store_sessions")) return new Response("", { status: 201 });
       throw new Error(`Unexpected request: ${requestUrl}`);
     };
+    const short = await handler(event("/auth/login", "POST", { password: "short" }), { ip: "203.0.113.21" });
+    assert.equal(short.statusCode, 401);
     const bad = await handler(event("/auth/login", "POST", { password: "test-admin-password" }), { ip: "203.0.113.21" });
     assert.equal(bad.statusCode, 401);
     const good = await handler(event("/auth/login", "POST", { password: "a-long-test-passphrase" }), { ip: "203.0.113.21" });
     assert.equal(good.statusCode, 200);
   } finally {
-    delete process.env.STRAWPING_ADMIN_PASSWORD_HASH;
+    process.env.STRAWPING_ADMIN_PASSWORD_HASH = testAdminPasswordHash;
   }
 });
 
@@ -490,7 +553,7 @@ test("a revoked or unknown session is rejected even with a valid signature", asy
   const session = signedSession();
   globalThis.fetch = withSessionStore(async () => reply([]), { active: false });
   const response = await handler(
-    event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+    event("/orders", "GET", undefined, { cookie: `__Host-strawping_admin=${session.token}` })
   );
   assert.equal(response.statusCode, 401);
 });
@@ -499,7 +562,7 @@ test("session verification fails closed when the session store is down", async (
   const session = signedSession();
   globalThis.fetch = async () => new Response("{}", { status: 500 });
   const response = await handler(
-    event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+    event("/orders", "GET", undefined, { cookie: `__Host-strawping_admin=${session.token}` })
   );
   assert.equal(response.statusCode, 500);
 });
@@ -510,7 +573,7 @@ test("old-format tokens and tokens from before a password change are rejected", 
   const stale = signedSession({ overrides: { cv: "0".repeat(24) } });
   for (const session of [legacy, stale]) {
     const response = await handler(
-      event("/orders", "GET", undefined, { authorization: `Bearer ${session.token}` })
+      event("/orders", "GET", undefined, { cookie: `__Host-strawping_admin=${session.token}` })
     );
     assert.equal(response.statusCode, 401);
   }
@@ -528,8 +591,11 @@ test("logout revokes the session on the server", async () => {
     throw new Error(`Unexpected request: ${url}`);
   };
   const response = await handler(
-    event("/auth/logout", "POST", {}, { authorization: `Bearer ${session.token}` })
+    event("/auth/logout", "POST", { csrfToken: session.csrfToken }, sessionHeaders(session, {
+      "x-csrf-token": session.csrfToken
+    }))
   );
+  assert.match(response.headers["set-cookie"], /Max-Age=0/);
   assert.equal(response.statusCode, 200);
   assert.equal(revoked, true);
 });
@@ -539,7 +605,7 @@ test("order ids are validated before they reach the database path", async () => 
   globalThis.fetch = withSessionStore(async () => {
     throw new Error("database must not be reached for an invalid order id");
   });
-  const headers = { authorization: `Bearer ${session.token}`, "x-csrf-token": session.csrfToken };
+  const headers = { cookie: `__Host-strawping_admin=${session.token}`, "x-csrf-token": session.csrfToken };
   const patch = await handler(
     event("/orders/" + encodeURIComponent("x&select=*"), "PATCH", { csrfToken: session.csrfToken, status: "Shipped" }, headers)
   );
@@ -618,6 +684,17 @@ async function placeOrder(items) {
   return handler(event("/orders", "POST", { customer: ORDER_CUSTOMER, items }), { ip: "203.0.113.20" });
 }
 
+test("product image fallbacks must use credential-free HTTPS URLs", async () => {
+  globalThis.fetch = async () => reply([{ value: [
+    { id: "bad-image", name: "Bad image", category: "General", price: 1, image: "javascript:blocked", images: [], inStock: true },
+    { id: "bad-thumbnail", name: "Bad thumbnail", category: "General", price: 1, images: [], thumbnail: "data:image/svg+xml,blocked", inStock: true },
+    { id: "good-image", name: "Good image", category: "General", price: 1, image: "https://cdn.example/item.jpg", images: [], inStock: true }
+  ] }]);
+  const response = await handler(event("/products"));
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body).products.map(product => product.id), ["good-image"]);
+});
+
 test("the public products API returns variants and hides products with broken variants", async () => {
   globalThis.fetch = orderFetch([
     VARIANT_TEE,
@@ -640,7 +717,7 @@ test("admins can save a product with variants and the server rejects mixed varia
     written = JSON.parse(options.body);
     return reply([{ key: "products", value: written.value }]);
   });
-  const headers = { authorization: `Bearer ${session.token}`, "x-csrf-token": session.csrfToken };
+  const headers = { cookie: `__Host-strawping_admin=${session.token}`, "x-csrf-token": session.csrfToken };
 
   const ok = await handler(event("/products", "PUT", { csrfToken: session.csrfToken, products: [VARIANT_TEE] }, headers));
   assert.equal(ok.statusCode, 200);

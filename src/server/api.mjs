@@ -29,6 +29,7 @@ const ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 const SESSION_TTL_SECONDS = 60 * 60 * 2;
 const SESSION_ISSUER = "strawping-store";
 const SESSION_AUDIENCE = "strawping-admin";
+const ADMIN_SESSION_COOKIE = "__Host-strawping_admin";
 const MIN_ADMIN_PASSWORD_LENGTH = 12;
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_PRODUCT_IMAGE_BYTES = 1_500_000;
@@ -116,11 +117,9 @@ function adminSessionSecret() {
 }
 
 // ---- Admin credential (STP-001, STP-004) ---------------------------------
-// Preferred: STRAWPING_ADMIN_PASSWORD_HASH = "scrypt$N$r$p$<salt b64>$<hash b64>"
-// (create one with: node scripts/hash-password.mjs). Legacy fallback: the plain
-// STRAWPING_ADMIN_PASSWORD variable, which still works but is warned about.
+// STRAWPING_ADMIN_PASSWORD_HASH must use the format
+// "scrypt$N$r$p$<salt b64>$<hash b64>". Plaintext password configuration is rejected.
 const SCRYPT_MAX_N = 2 ** 17;
-let warnedLegacyCredential = false;
 
 function scryptAsync(password, salt, keylen, options) {
   return new Promise((resolve, reject) => {
@@ -148,42 +147,21 @@ function parseScryptHash(stored) {
 }
 
 function adminCredential() {
-  const storedHash = process.env.STRAWPING_ADMIN_PASSWORD_HASH;
-  if (storedHash) {
-    const parsed = parseScryptHash(storedHash);
-    if (!parsed) throw new Error("STRAWPING_ADMIN_PASSWORD_HASH is not a valid scrypt hash");
-    return { kind: "scrypt", ...parsed, fingerprintSource: storedHash };
-  }
-  const plain = env("STRAWPING_ADMIN_PASSWORD");
-  if (!warnedLegacyCredential) {
-    warnedLegacyCredential = true;
-    console.warn(
-      "Strawping: using the plain STRAWPING_ADMIN_PASSWORD variable. Switch to STRAWPING_ADMIN_PASSWORD_HASH (node scripts/hash-password.mjs)."
-    );
-    if (plain.length < MIN_ADMIN_PASSWORD_LENGTH) {
-      console.warn(
-        `Strawping: the admin password is shorter than ${MIN_ADMIN_PASSWORD_LENGTH} characters. Use a longer passphrase.`
-      );
-    }
-  }
-  return { kind: "plain", plain, fingerprintSource: plain };
+  const storedHash = env("STRAWPING_ADMIN_PASSWORD_HASH");
+  const parsed = parseScryptHash(storedHash);
+  if (!parsed) throw new Error("STRAWPING_ADMIN_PASSWORD_HASH is not a valid scrypt hash");
+  return { kind: "scrypt", ...parsed, fingerprintSource: storedHash };
 }
 
 async function verifyAdminPassword(supplied, credential) {
-  if (credential.kind === "scrypt") {
-    const { params, saltBuf, hashBuf } = credential;
-    const derived = await scryptAsync(supplied.normalize("NFKC"), saltBuf, hashBuf.length, {
-      ...params,
-      maxmem: 256 * 1024 * 1024
-    });
-    return crypto.timingSafeEqual(derived, hashBuf);
-  }
-  // Legacy plain-text variable. HMAC both sides so the comparison is constant-time
-  // and independent of password length. (This is not password storage.)
-  const key = adminSessionSecret();
-  const a = crypto.createHmac("sha256", key).update(supplied).digest();
-  const b = crypto.createHmac("sha256", key).update(credential.plain).digest();
-  return crypto.timingSafeEqual(a, b);
+  const normalized = supplied.normalize("NFKC");
+  if (normalized.length < MIN_ADMIN_PASSWORD_LENGTH) return false;
+  const { params, saltBuf, hashBuf } = credential;
+  const derived = await scryptAsync(normalized, saltBuf, hashBuf.length, {
+    ...params,
+    maxmem: 256 * 1024 * 1024
+  });
+  return crypto.timingSafeEqual(derived, hashBuf);
 }
 
 // Changing the admin password changes this value, which invalidates every
@@ -205,6 +183,26 @@ function signSessionPayload(encodedPayload) {
 
 function hashSessionId(sessionId) {
   return crypto.createHash("sha256").update(`session:${sessionId}`).digest("hex");
+}
+
+function adminSessionCookie(token, maxAge = SESSION_TTL_SECONDS) {
+  return `${ADMIN_SESSION_COOKIE}=${token}; Path=/; Max-Age=${maxAge}; Secure; HttpOnly; SameSite=Strict`;
+}
+
+function clearAdminSessionCookie() {
+  return `${ADMIN_SESSION_COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Strict`;
+}
+
+function sessionTokenFromRequest(event) {
+  const cookieHeader = event.headers?.cookie || event.headers?.Cookie || "";
+  for (const part of cookieHeader.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() === ADMIN_SESSION_COOKIE) {
+      return part.slice(separator + 1).trim();
+    }
+  }
+  return "";
 }
 
 async function createAdminSession(credential) {
@@ -246,8 +244,7 @@ async function createAdminSession(credential) {
 }
 
 async function verifyAdminSession(event) {
-  const header = event.headers?.authorization || event.headers?.Authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const token = sessionTokenFromRequest(event);
   const parts = token.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
 
@@ -474,7 +471,21 @@ function normalizeProduct(value) {
   const legacyImage = cleanLine(value.image ?? "", 2048);
   if (legacyImage === null) return null;
   const thumbnail = cleanLine(value.thumbnail ?? images[0] ?? legacyImage, 2048);
-  if (thumbnail === null || (thumbnail && !images.includes(thumbnail) && images.length)) return null;
+  const isSafeImageUrl = (url) => {
+    if (!url) return true;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" && !parsed.username && !parsed.password;
+    } catch {
+      return false;
+    }
+  };
+  if (
+    thumbnail === null ||
+    !isSafeImageUrl(legacyImage) ||
+    !isSafeImageUrl(thumbnail) ||
+    (thumbnail && !images.includes(thumbnail) && images.length)
+  ) return null;
   const image = thumbnail || images[0] || legacyImage;
   if (typeof value.inStock !== "boolean") return null;
   if (value.hasVariants !== undefined && typeof value.hasVariants !== "boolean") return null;
@@ -605,14 +616,27 @@ export async function handler(event, context = {}) {
       if (!(await verifyAdminPassword(body.password, credential))) {
         return json(401, { error: "Invalid credentials" });
       }
-      return json(200, await createAdminSession(credential));
+      const session = await createAdminSession(credential);
+      return json(200, { csrfToken: session.csrfToken, expiresIn: session.expiresIn }, {
+        "set-cookie": adminSessionCookie(session.token, session.expiresIn)
+      });
+    }
+
+    if (resource === "auth" && segments[1] === "session" && method === "GET") {
+      const session = await verifyAdminSession(event);
+      if (!session) return json(401, { error: "Unauthorized" }, { "set-cookie": clearAdminSessionCookie() });
+      return json(200, { csrfToken: session.csrfToken, expiresAt: session.exp });
     }
 
     if (resource === "auth" && segments[1] === "logout" && method === "POST") {
       const session = await verifyAdminSession(event);
-      if (!session) return json(401, { error: "Unauthorized" });
+      if (!session) return json(401, { error: "Unauthorized" }, { "set-cookie": clearAdminSessionCookie() });
+      const body = parseBody(event);
+      if (!isRecord(body) || !verifyCsrfToken(event, body.csrfToken, session)) {
+        return json(403, { error: "Invalid CSRF token" });
+      }
       await revokeAdminSession(session);
-      return json(200, { success: true });
+      return json(200, { success: true }, { "set-cookie": clearAdminSessionCookie() });
     }
 
     if (resource === "images" && segments[1] === "upload" && method === "POST") {
