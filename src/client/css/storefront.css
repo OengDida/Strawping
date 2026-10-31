@@ -156,9 +156,6 @@ select { cursor: pointer; }
 .product-card.is-sold-out .product-image { filter: grayscale(1); opacity: .55; }
 .product-tag { position: absolute; top: 12px; left: 12px; padding: 4px 10px; background: var(--white); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .product-tag.is-out { color: var(--white); background: var(--accent); }
-.wishlist-btn { position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--ink); background: rgba(255,255,255,.9); transition: color .2s, transform .2s; }
-.wishlist-btn:hover { transform: scale(1.06); }
-.wishlist-btn.is-saved { color: var(--accent); }
 .quick-add { position: absolute; right: 12px; bottom: 12px; left: 12px; padding: 12px; background: var(--white); box-shadow: 0 1px 3px rgba(0,0,0,.08); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; opacity: 0; transform: translateY(12px); transition: opacity .3s, transform .3s, background .2s, color .2s; }
 .product-card:hover .quick-add, .quick-add:focus-visible { opacity: 1; transform: translateY(0); }
 .quick-add:hover { color: var(--white); background: var(--ink); }

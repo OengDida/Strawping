@@ -67,7 +67,6 @@ let activeCategory = "All";
 let searchQuery = "";
 let inStockOnly = false;
 let sortOrder = "featured";
-let wishlist = loadWishlist();
 let toastTimer = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -273,7 +272,6 @@ function renderProducts(productsOverride) {
   emptyState.classList.add("hidden");
   grid.innerHTML = filtered.map(product => {
     const isOut = !isProductAvailable(product);
-    const saved = wishlist.includes(product.id);
     return `
       <article class="product-card ${isOut ? 'is-sold-out' : ''}" data-product-id="${escapeHtml(product.id)}">
         <div class="product-media">
@@ -284,20 +282,18 @@ function renderProducts(productsOverride) {
             loading="lazy"
           />
           <span class="product-tag ${isOut ? 'is-out' : ''}">${isOut ? 'Sold out' : 'In stock'}</span>
-          <button type="button" class="wishlist-btn ${saved ? 'is-saved' : ''}" data-wishlist-id="${escapeHtml(product.id)}" aria-pressed="${saved}" aria-label="${saved ? 'Remove' : 'Save'} ${escapeHtml(product.name)} ${saved ? 'from' : 'to'} wishlist">
-            ${icon("heart", 18, saved ? "currentColor" : "none")}
-          </button>
-          ${isOut ? '' : `<button data-action="add-to-cart" data-id="${escapeHtml(product.id)}" class="quick-add" type="button" aria-label="Quick add ${escapeHtml(product.name)} to bag">Quick add</button>`}
+          ${isOut || productHasVariants(product) ? '' : `<button data-action="add-to-cart" data-id="${escapeHtml(product.id)}" class="quick-add" type="button" aria-label="Quick add ${escapeHtml(product.name)} to bag">Quick add</button>`}
         </div>
         <div class="product-details">
           <p class="product-category">${escapeHtml(product.category || 'General')}</p>
           <h3 class="product-name" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3>
           <p class="product-description">${escapeHtml(product.description || 'Thoughtfully chosen for the everyday.')}</p>
           <p class="product-price">${escapeHtml(productPriceText(product, currency))}</p>
-          ${productHasVariants(product) && !isOut ? renderVariantPicker(product) : ''}
           <div class="product-actions">
             ${isOut ? `
               <button disabled class="product-soldout" type="button">Sold out</button>
+            ` : productHasVariants(product) ? `
+              <button data-action="open-details" data-id="${escapeHtml(product.id)}" class="product-buy" type="button" aria-label="Choose options for ${escapeHtml(product.name)}">View product ${icon("arrow", 14)}</button>
             ` : `
               <button data-action="add-to-cart" data-id="${escapeHtml(product.id)}" class="product-add" type="button" aria-label="Add ${escapeHtml(product.name)} to bag">Add to bag</button>
               <button data-action="quick-buy" data-id="${escapeHtml(product.id)}" class="product-buy" type="button" aria-label="Buy ${escapeHtml(product.name)} now">Buy now ${icon("arrow", 14)}</button>
@@ -441,20 +437,6 @@ function setupProductDetail() {
   overlay.querySelector(".detail-close").addEventListener("click", closeProductDetail);
   overlay.addEventListener("click", e => { if(e.target===overlay) closeProductDetail(); });
   document.addEventListener("keydown", e => { if(e.key==="Escape") closeProductDetail(); });
-}
-
-// === WISHLIST (saved on this device only) ===
-function loadWishlist() {
-  try { const saved = JSON.parse(localStorage.getItem("strawping_wishlist") || "[]"); return Array.isArray(saved) ? saved.filter(id => typeof id === "string") : []; }
-  catch { return []; }
-}
-
-function toggleWishlist(productId) {
-  const saved = wishlist.includes(productId);
-  wishlist = saved ? wishlist.filter(id => id !== productId) : [...wishlist, productId];
-  try { localStorage.setItem("strawping_wishlist", JSON.stringify(wishlist)); } catch {}
-  renderProducts();
-  showToast(saved ? "Removed from your wishlist" : "Saved to your wishlist");
 }
 
 function showToast(message) {
@@ -850,9 +832,6 @@ function setupOverlays() {
       return;
     }
 
-    const wish = e.target.closest("[data-wishlist-id]");
-    if (wish) { toggleWishlist(wish.getAttribute("data-wishlist-id")); return; }
-
     if (e.target.closest("[data-open-cart]")) { openCartDrawer(); return; }
     if (e.target.closest("[data-close-menu]")) setOverlay("mobile-menu", false);
   });
@@ -1108,6 +1087,9 @@ function setupStorefrontActionDelegation() {
 
     try {
       switch (action) {
+        case "open-details":
+          openProductDetail(id);
+          break;
         case "add-to-cart":
           if (addToCart(id, btn) && btn.closest(".product-detail-panel")) closeProductDetail();
           break;
@@ -1127,7 +1109,7 @@ function setupStorefrontActionDelegation() {
   });
 }
 
-// Dropdown changes on product cards (update price, clear the "please choose" message).
+// Variant dropdown changes are handled inside the product detail panel.
 document.addEventListener("change", (e) => {
   const select = e.target.closest?.("[data-variant-field]");
   if (select) handleVariantChange(select);
