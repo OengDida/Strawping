@@ -360,3 +360,14 @@ select { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+
+/* ---- Product variants (storefront) ---- */
+.variant-picker { margin-top: 12px; display: grid; gap: 8px; }
+.variant-field { display: grid; gap: 4px; }
+.variant-label { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.variant-select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 0; color: var(--ink); background: var(--white); font: inherit; font-size: 13px; }
+.variant-select:focus { outline: 0; border-color: var(--ink); }
+.variant-error { color: var(--accent); font-size: 12px; font-weight: 600; line-height: 17px; }
+.variant-error[hidden] { display: none; }
+.cart-item-variant { margin-top: 2px; font-size: 12px; font-weight: 600; }

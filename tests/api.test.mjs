@@ -568,3 +568,127 @@ test("unexpected server errors return a request id and no internals", async () =
     console.error = originalConsoleError;
   }
 });
+
+// ---- Product variants -------------------------------------------------------
+const VARIANT_TEE = {
+  id: "prod-tee",
+  name: "Tee",
+  category: "Apparel",
+  price: 10,
+  image: "",
+  description: "",
+  inStock: true,
+  hasVariants: true,
+  variants: [
+    { id: "var-m-red", size: "M", color: "Red", type: "", stock: 5, priceAdjustment: 0 },
+    { id: "var-l-red", size: "L", color: "Red", type: "", stock: 1, priceAdjustment: 2.5 },
+    { id: "var-l-blue", size: "L", color: "Blue", type: "", stock: 0, priceAdjustment: 0 }
+  ]
+};
+
+const ORDER_CUSTOMER = {
+  name: "Customer",
+  phone: "123456",
+  email: "customer@example.com",
+  address: "One Street",
+  notes: ""
+};
+
+function orderFetch(catalog, onSave = () => {}) {
+  return async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
+    if (requestUrl.includes("key=eq.products")) return reply([{ value: catalog }]);
+    if (requestUrl.endsWith("/rest/v1/store_orders") && options.method === "POST") {
+      const saved = JSON.parse(options.body);
+      onSave(saved);
+      return reply([saved]);
+    }
+    throw new Error(`Unexpected request: ${requestUrl}`);
+  };
+}
+
+async function placeOrder(items) {
+  return handler(event("/orders", "POST", { customer: ORDER_CUSTOMER, items }), { ip: "203.0.113.20" });
+}
+
+test("the public products API returns variants and hides products with broken variants", async () => {
+  globalThis.fetch = orderFetch([
+    VARIANT_TEE,
+    { ...VARIANT_TEE, id: "prod-broken", variants: [] },
+    { ...VARIANT_TEE, id: "prod-dupe", variants: [VARIANT_TEE.variants[0], { ...VARIANT_TEE.variants[0], id: "var-other" }] },
+    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true }
+  ]);
+  const response = await handler(event("/products"));
+  const products = JSON.parse(response.body).products;
+  assert.deepEqual(products.map(product => product.id), ["prod-tee", "prod-mug"]);
+  assert.equal(products[0].hasVariants, true);
+  assert.equal(products[0].variants.length, 3);
+  assert.equal("variants" in products[1], false);
+});
+
+test("admins can save a product with variants and the server rejects mixed variant columns", async () => {
+  const session = signedSession();
+  let written;
+  globalThis.fetch = withSessionStore(async (url, options = {}) => {
+    written = JSON.parse(options.body);
+    return reply([{ key: "products", value: written.value }]);
+  });
+  const headers = { authorization: `Bearer ${session.token}`, "x-csrf-token": session.csrfToken };
+
+  const ok = await handler(event("/products", "PUT", { csrfToken: session.csrfToken, products: [VARIANT_TEE] }, headers));
+  assert.equal(ok.statusCode, 200);
+  assert.equal(written.value[0].variants[1].priceAdjustment, 2.5);
+
+  // "color" is filled for one variant but empty for another.
+  const mixed = { ...VARIANT_TEE, variants: [VARIANT_TEE.variants[0], { ...VARIANT_TEE.variants[1], color: "" }] };
+  const bad = await handler(event("/products", "PUT", { csrfToken: session.csrfToken, products: [mixed] }, headers));
+  assert.equal(bad.statusCode, 400);
+
+  // Turning variants off stores a plain product.
+  const plain = { ...VARIANT_TEE, hasVariants: false, variants: [] };
+  const off = await handler(event("/products", "PUT", { csrfToken: session.csrfToken, products: [plain] }, headers));
+  assert.equal(off.statusCode, 200);
+  assert.equal("variants" in written.value[0], false);
+});
+
+test("orders for variant products need a valid in-stock variant and use the server price", async () => {
+  let saved;
+  globalThis.fetch = orderFetch([VARIANT_TEE], order => { saved = order; });
+
+  const missing = await placeOrder([{ id: "prod-tee", quantity: 1 }]);
+  assert.equal(missing.statusCode, 400);
+
+  const fake = await placeOrder([{ id: "prod-tee", variantId: "var-nope", quantity: 1 }]);
+  assert.equal(fake.statusCode, 400);
+
+  const soldOut = await placeOrder([{ id: "prod-tee", variantId: "var-l-blue", quantity: 1 }]);
+  assert.equal(soldOut.statusCode, 409);
+
+  const tooMany = await placeOrder([{ id: "prod-tee", variantId: "var-l-red", quantity: 2 }]);
+  assert.equal(tooMany.statusCode, 409);
+
+  const good = await placeOrder([
+    { id: "prod-tee", variantId: "var-l-red", quantity: 1, price: 0.01 },
+    { id: "prod-tee", variantId: "var-m-red", quantity: 2 }
+  ]);
+  assert.equal(good.statusCode, 201);
+  assert.equal(saved.total, 32.5);
+  assert.deepEqual(saved.items[0], {
+    id: "prod-tee", name: "Tee", quantity: 1, price: 12.5, variantId: "var-l-red", variantLabel: "L / Red"
+  });
+
+  const repeated = await placeOrder([
+    { id: "prod-tee", variantId: "var-m-red", quantity: 1 },
+    { id: "prod-tee", variantId: "var-m-red", quantity: 1 }
+  ]);
+  assert.equal(repeated.statusCode, 400);
+});
+
+test("a variant id is rejected for a product that has no variants", async () => {
+  globalThis.fetch = orderFetch([
+    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true }
+  ]);
+  const response = await placeOrder([{ id: "prod-mug", variantId: "var-x", quantity: 1 }]);
+  assert.equal(response.statusCode, 400);
+});

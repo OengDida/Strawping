@@ -258,3 +258,19 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+
+/* ---- Product variants (admin form) ---- */
+.variant-section { padding: 16px; border: 1px solid var(--line); display: grid; gap: 12px; }
+.variant-head, .variant-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1.2fr)) minmax(0, .8fr) minmax(0, .9fr) auto; gap: 8px; align-items: center; }
+.variant-head span { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.variant-rows { display: grid; gap: 8px; }
+.variant-row input { width: 100%; min-width: 0; padding: 10px 10px; border: 1px solid var(--line); border-radius: 0; outline: 0; color: var(--ink); background: var(--white); font-size: 13px; }
+.variant-row input:focus { border-color: var(--ink); }
+.variant-section .btn-outline { justify-self: start; }
+@media (max-width: 639px) {
+  .variant-head { display: none; }
+  .variant-row { grid-template-columns: 1fr 1fr; padding: 10px; border: 1px solid var(--line-soft); }
+  .variant-row .link-btn { justify-self: start; }
+}
+.order-variant { color: var(--muted); font-size: 12px; }

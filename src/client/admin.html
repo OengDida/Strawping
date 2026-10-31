@@ -297,6 +297,30 @@
           </label>
         </div>
 
+        <div class="toggle-row">
+          <div>
+            <h4>Enable variants</h4>
+            <p>Turn on if this product comes in sizes, colors, or types.</p>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="prod-has-variants" aria-label="Enable variants" aria-controls="variant-section">
+            <span class="switch-track"></span>
+          </label>
+        </div>
+
+        <section id="variant-section" class="variant-section hidden" aria-label="Product variants">
+          <p class="field-hint">
+            Add one row for each option customers can buy. Fill in at least one of Size, Color, or Type
+            (use the same columns on every row). Price adjustment is added to the base price above
+            &mdash; use a negative number for a discount.
+          </p>
+          <div class="variant-head" aria-hidden="true">
+            <span>Size</span><span>Color</span><span>Type</span><span>Stock</span><span>Price +/-</span><span></span>
+          </div>
+          <div id="variant-rows" class="variant-rows"></div>
+          <button type="button" id="add-variant-btn" class="btn-outline">Add variant</button>
+        </section>
+
         <button type="submit" id="save-prod-btn" class="btn-solid btn-block">Save product</button>
       </form>
     </div>

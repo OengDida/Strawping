@@ -382,6 +382,70 @@ async function rateLimit(event, context, resource, limit, windowSec) {
   }
 }
 
+// ---- Product variants -----------------------------------------------------
+// A variant is one buyable combination, e.g. { size: "M", color: "Red" }.
+// Products without variants keep their original shape (no extra fields).
+const VARIANT_FIELDS = ["size", "color", "type"];
+const MAX_VARIANTS_PER_PRODUCT = 100;
+const ID_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
+
+function variantLabel(variant) {
+  return VARIANT_FIELDS.map(field => variant[field]).filter(Boolean).join(" / ");
+}
+
+function normalizeVariants(value, basePriceCents) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_VARIANTS_PER_PRODUCT) return null;
+  const ids = new Set();
+  const combinations = new Set();
+  const variants = [];
+
+  for (const raw of value) {
+    if (!isRecord(raw) || typeof raw.id !== "string" || !ID_PATTERN.test(raw.id) || ids.has(raw.id)) {
+      return null;
+    }
+    const attributes = {};
+    for (const field of VARIANT_FIELDS) {
+      const cleaned = cleanLine(raw[field] ?? "", 40);
+      if (cleaned === null) return null;
+      attributes[field] = cleaned;
+    }
+    // Every variant needs at least one of size / color / type.
+    if (!VARIANT_FIELDS.some(field => attributes[field])) return null;
+
+    if (!Number.isInteger(raw.stock) || raw.stock < 0 || raw.stock > 1_000_000) return null;
+
+    const adjustment = raw.priceAdjustment ?? 0;
+    if (typeof adjustment !== "number" || !Number.isFinite(adjustment) || Math.abs(adjustment) > 1_000_000) {
+      return null;
+    }
+    const adjustmentCents = Math.round(adjustment * 100);
+    if (Math.abs(adjustment - adjustmentCents / 100) > 1e-8) return null;
+    if (basePriceCents + adjustmentCents < 0) return null;
+
+    // The same size/color/type combination may only appear once.
+    const combination = VARIANT_FIELDS.map(field => attributes[field].toLowerCase()).join("|");
+    if (combinations.has(combination)) return null;
+
+    ids.add(raw.id);
+    combinations.add(combination);
+    variants.push({
+      id: raw.id,
+      size: attributes.size,
+      color: attributes.color,
+      type: attributes.type,
+      stock: raw.stock,
+      priceAdjustment: adjustmentCents / 100
+    });
+  }
+
+  // A column (size/color/type) is either filled for every variant or for none.
+  for (const field of VARIANT_FIELDS) {
+    const filled = variants.filter(variant => variant[field]).length;
+    if (filled !== 0 && filled !== variants.length) return null;
+  }
+  return variants;
+}
+
 function normalizeProduct(value) {
   if (!isRecord(value)) return null;
   const id = value.id;
@@ -408,8 +472,9 @@ function normalizeProduct(value) {
     }
   }
   if (typeof value.inStock !== "boolean") return null;
+  if (value.hasVariants !== undefined && typeof value.hasVariants !== "boolean") return null;
 
-  return {
+  const product = {
     id,
     name,
     category: category || "General",
@@ -418,6 +483,13 @@ function normalizeProduct(value) {
     description,
     inStock: value.inStock
   };
+
+  if (value.hasVariants === true) {
+    const variants = normalizeVariants(value.variants, priceCents);
+    if (!variants) return null;
+    return { ...product, hasVariants: true, variants };
+  }
+  return product;
 }
 
 function normalizeCustomer(value) {
@@ -466,7 +538,7 @@ function formatOrderTelegramMessage(order) {
     customer.notes ? `Notes: ${customer.notes}` : "",
     "",
     "Items:",
-    ...order.items.map(item => `• ${item.name} x${item.quantity} — $${item.price.toFixed(2)}`),
+    ...order.items.map(item => `• ${item.name}${item.variantLabel ? ` (${item.variantLabel})` : ""} x${item.quantity} — $${item.price.toFixed(2)}`),
     "",
     `Total: $${order.total.toFixed(2)}`
   ].filter(line => line !== undefined);
@@ -633,28 +705,49 @@ export async function handler(event, context = {}) {
         if (
           !isRecord(requested) ||
           typeof requested.id !== "string" ||
-          !/^[A-Za-z0-9_-]{1,100}$/.test(requested.id) ||
+          !ID_PATTERN.test(requested.id) ||
           !Number.isInteger(requested.quantity) ||
           requested.quantity < 1 ||
           requested.quantity > 99 ||
-          seen.has(requested.id)
+          (requested.variantId != null &&
+            (typeof requested.variantId !== "string" || !ID_PATTERN.test(requested.variantId)))
         ) {
           return json(400, { error: "Invalid order item." });
         }
-        seen.add(requested.id);
+        // The same product may appear twice only with different variants.
+        const lineKey = `${requested.id}::${requested.variantId ?? ""}`;
+        if (seen.has(lineKey)) return json(400, { error: "Invalid order item." });
+        seen.add(lineKey);
+
         const product = catalog.get(requested.id);
         if (!product || !product.inStock) {
           return json(409, { error: "A selected product is unavailable. Refresh the catalog and try again." });
         }
 
-        const priceCents = Math.round(product.price * 100);
-        totalCents += priceCents * requested.quantity;
-        items.push({
-          id: product.id,
-          name: product.name,
-          quantity: requested.quantity,
-          price: priceCents / 100
-        });
+        let unitCents = Math.round(product.price * 100);
+        const line = { id: product.id, name: product.name, quantity: requested.quantity };
+
+        if (product.hasVariants) {
+          // Variant products must name a real variant (size/color/type) that is in stock.
+          if (requested.variantId == null) {
+            return json(400, { error: `Please choose a size, color or type for "${product.name}".` });
+          }
+          const variant = product.variants.find(candidate => candidate.id === requested.variantId);
+          if (!variant) {
+            return json(400, { error: `The selected option for "${product.name}" is not valid. Refresh and try again.` });
+          }
+          if (variant.stock < requested.quantity) {
+            return json(409, { error: `"${product.name}" (${variantLabel(variant)}) does not have enough stock.` });
+          }
+          unitCents += Math.round(variant.priceAdjustment * 100);
+          line.variantId = variant.id;
+          line.variantLabel = variantLabel(variant);
+        } else if (requested.variantId != null) {
+          return json(400, { error: "Invalid order item." });
+        }
+
+        totalCents += unitCents * requested.quantity;
+        items.push({ ...line, price: unitCents / 100 });
       }
       if (!Number.isSafeInteger(totalCents) || totalCents > 999999999999) {
         return json(400, { error: "Order total is out of range." });

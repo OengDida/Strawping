@@ -218,6 +218,78 @@ async function optimizeProductImage(file) {
   }
 }
 
+// ---- Product variants (sizes / colors / types) ----
+const VARIANT_FIELDS = ["size", "color", "type"];
+
+function setVariantSectionVisible(visible) {
+  document.getElementById("variant-section")?.classList.toggle("hidden", !visible);
+}
+
+function addVariantRow(variant = {}) {
+  const rows = document.getElementById("variant-rows");
+  if (!rows) return;
+  const row = document.createElement("div");
+  row.className = "variant-row";
+  // Keep the id of an existing variant so old carts/orders stay valid; new rows get a fresh id.
+  row.dataset.variantId = variant.id || `var-${crypto.randomUUID()}`;
+  row.innerHTML = `
+    <input type="text" data-field="size" maxlength="40" placeholder="e.g. M" aria-label="Size" value="${escapeHtml(variant.size || "")}" />
+    <input type="text" data-field="color" maxlength="40" placeholder="e.g. Red" aria-label="Color" value="${escapeHtml(variant.color || "")}" />
+    <input type="text" data-field="type" maxlength="40" placeholder="e.g. Cotton" aria-label="Type" value="${escapeHtml(variant.type || "")}" />
+    <input type="number" data-field="stock" min="0" step="1" aria-label="Stock" value="${escapeHtml(variant.stock ?? 0)}" />
+    <input type="number" data-field="priceAdjustment" step="0.01" aria-label="Price adjustment" value="${escapeHtml(variant.priceAdjustment ?? 0)}" />
+    <button type="button" class="link-btn link-danger" data-remove-variant aria-label="Remove this variant">Remove</button>
+  `;
+  rows.appendChild(row);
+}
+
+function resetVariantEditor(product) {
+  const toggle = document.getElementById("prod-has-variants");
+  const rows = document.getElementById("variant-rows");
+  if (!toggle || !rows) return;
+  rows.innerHTML = "";
+  const enabled = Boolean(product?.hasVariants && Array.isArray(product.variants));
+  toggle.checked = enabled;
+  if (enabled) product.variants.forEach(variant => addVariantRow(variant));
+  setVariantSectionVisible(enabled);
+}
+
+// Reads the rows and checks them. Throws an Error with a friendly message if something is wrong.
+function collectVariants() {
+  const rowEls = [...document.querySelectorAll("#variant-rows .variant-row")];
+  if (rowEls.length === 0) throw new Error("Add at least one variant, or turn off \"Enable variants\".");
+
+  const seen = new Set();
+  const variants = rowEls.map((row, index) => {
+    const read = field => row.querySelector(`[data-field="${field}"]`).value.trim();
+    const variant = { id: row.dataset.variantId };
+    for (const field of VARIANT_FIELDS) variant[field] = read(field);
+    if (!VARIANT_FIELDS.some(field => variant[field])) {
+      throw new Error(`Variant row ${index + 1}: fill in a size, color, or type.`);
+    }
+    variant.stock = Number(read("stock") || 0);
+    if (!Number.isInteger(variant.stock) || variant.stock < 0) {
+      throw new Error(`Variant row ${index + 1}: stock must be a whole number (0 or more).`);
+    }
+    variant.priceAdjustment = Number(read("priceAdjustment") || 0);
+    if (!Number.isFinite(variant.priceAdjustment)) {
+      throw new Error(`Variant row ${index + 1}: price adjustment must be a number.`);
+    }
+    const combo = VARIANT_FIELDS.map(field => variant[field].toLowerCase()).join("|");
+    if (seen.has(combo)) throw new Error(`Variant row ${index + 1} repeats another row. Each combination can only be listed once.`);
+    seen.add(combo);
+    return variant;
+  });
+
+  for (const field of VARIANT_FIELDS) {
+    const filled = variants.filter(variant => variant[field]).length;
+    if (filled !== 0 && filled !== variants.length) {
+      throw new Error(`The "${field}" column is filled on some rows but empty on others. Fill it on every row or leave it empty on all.`);
+    }
+  }
+  return variants;
+}
+
 function setupProductManager() {
   const modal = document.getElementById("product-modal");
   const openBtn = document.getElementById("open-add-product-btn");
@@ -233,8 +305,20 @@ function setupProductManager() {
     document.getElementById("prod-id").value = "";
     document.getElementById("product-modal-title").textContent = "Add New Product";
     document.getElementById("prod-instock").checked = true;
+    resetVariantEditor(null);
     modal.classList.remove("hidden");
     modal.classList.add("flex");
+  });
+
+  document.getElementById("prod-has-variants")?.addEventListener("change", (e) => {
+    setVariantSectionVisible(e.target.checked);
+    // Start with one empty row so the admin sees where to type.
+    if (e.target.checked && !document.querySelector("#variant-rows .variant-row")) addVariantRow();
+  });
+  document.getElementById("add-variant-btn")?.addEventListener("click", () => addVariantRow());
+  document.getElementById("variant-rows")?.addEventListener("click", (e) => {
+    const removeBtn = e.target.closest("[data-remove-variant]");
+    if (removeBtn) removeBtn.closest(".variant-row")?.remove();
   });
 
   closeBtn?.addEventListener("click", () => {
@@ -279,8 +363,18 @@ function setupProductManager() {
       category: document.getElementById("prod-category").value.trim(),
       price: parseFloat(document.getElementById("prod-price").value) || 0,
       description: document.getElementById("prod-description").value.trim(),
-      inStock: document.getElementById("prod-instock").checked
+      inStock: document.getElementById("prod-instock").checked,
+      hasVariants: document.getElementById("prod-has-variants").checked,
+      variants: []
     };
+    if (productData.hasVariants) {
+      try {
+        productData.variants = collectVariants();
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+    }
 
     const originalButtonText = saveButton.textContent;
     saveButton.disabled = true;
@@ -351,6 +445,7 @@ function renderAdminProducts() {
       </td>
       <td>
         <span class="chip">${escapeHtml(prod.category || 'General')}</span>
+        ${prod.hasVariants && Array.isArray(prod.variants) ? `<span class="chip chip-solid">${prod.variants.length} variant${prod.variants.length === 1 ? '' : 's'}</span>` : ''}
       </td>
       <td class="cell-price">
         ${escapeHtml(currency)}${Number(prod.price).toFixed(2)}
@@ -398,6 +493,7 @@ function editProduct(id) {
   updateProductImagePreview(prod.image || "");
   document.getElementById("prod-description").value = prod.description || "";
   document.getElementById("prod-instock").checked = prod.inStock;
+  resetVariantEditor(prod);
 
   document.getElementById("product-modal-title").textContent = "Edit Product";
 
@@ -510,7 +606,7 @@ async function renderAdminOrders() {
             const amountText = Number.isFinite(amount) && amount >= 0 ? amount.toFixed(2) : "0.00";
             return `
               <div class="order-line">
-                <span>${escapeHtml(item.name)} <span class="order-qty">x${escapeHtml(quantityText)}</span></span>
+                <span>${escapeHtml(item.name)}${item.variantLabel ? ` <span class="order-variant">(${escapeHtml(item.variantLabel)})</span>` : ""} <span class="order-qty">x${escapeHtml(quantityText)}</span></span>
                 <span>${safeCurrency}${amountText}</span>
               </div>
             `;

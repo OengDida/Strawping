@@ -246,7 +246,7 @@ function renderProducts(productsOverride) {
     const matchesSearch = !searchQuery ||
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesStock = !inStockOnly || p.inStock;
+    const matchesStock = !inStockOnly || isProductAvailable(p);
     return matchesCat && matchesSearch && matchesStock;
   });
   if (sortOrder === "price-asc") filtered.sort((a, b) => Number(a.price) - Number(b.price));
@@ -266,10 +266,10 @@ function renderProducts(productsOverride) {
 
   emptyState.classList.add("hidden");
   grid.innerHTML = filtered.map(product => {
-    const isOut = !product.inStock;
+    const isOut = !isProductAvailable(product);
     const saved = wishlist.includes(product.id);
     return `
-      <article class="product-card ${isOut ? 'is-sold-out' : ''}">
+      <article class="product-card ${isOut ? 'is-sold-out' : ''}" data-product-id="${escapeHtml(product.id)}">
         <div class="product-media">
           <img
             src="${escapeHtml(safeImageUrl(product.image, FALLBACK_IMAGE))}"
@@ -287,7 +287,8 @@ function renderProducts(productsOverride) {
           <p class="product-category">${escapeHtml(product.category || 'General')}</p>
           <h3 class="product-name" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3>
           <p class="product-description">${escapeHtml(product.description || 'Thoughtfully chosen for the everyday.')}</p>
-          <p class="product-price">${escapeHtml(currency)}${Number(product.price).toFixed(2)}</p>
+          <p class="product-price">${escapeHtml(productPriceText(product, currency))}</p>
+          ${productHasVariants(product) && !isOut ? renderVariantPicker(product) : ''}
           <div class="product-actions">
             ${isOut ? `
               <button disabled class="product-soldout" type="button">Sold out</button>
@@ -305,7 +306,7 @@ function renderProducts(productsOverride) {
 // Feature the first available item without changing the catalog order.
 function renderHeroSpotlight(productsOverride) {
   const products = Array.isArray(productsOverride) ? productsOverride : StoreDB.getProducts();
-  const product = products.find(item => item && item.inStock && item.image) || products.find(item => item && item.inStock);
+  const product = products.find(item => isProductAvailable(item) && item.image) || products.find(item => isProductAvailable(item));
   const feature = document.getElementById("hero-spotlight");
   const fallback = document.getElementById("hero-default-art");
   const image = document.getElementById("hero-spotlight-image");
@@ -374,21 +375,161 @@ function showToast(message) {
   toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2200);
 }
 
+// === PRODUCT VARIANTS (sizes / colors / types) ===
+const VARIANT_FIELDS = [["size", "Size"], ["color", "Color"], ["type", "Type"]];
+
+function productHasVariants(product) {
+  return Boolean(product && product.hasVariants && Array.isArray(product.variants) && product.variants.length);
+}
+
+// A variant product is only "available" if the admin left it in stock AND at least one variant has stock.
+function isProductAvailable(product) {
+  if (!product || !product.inStock) return false;
+  return productHasVariants(product) ? product.variants.some(v => Number(v.stock) > 0) : true;
+}
+
+function variantLabel(variant) {
+  return VARIANT_FIELDS.map(([key]) => variant[key]).filter(Boolean).join(" / ");
+}
+
+function variantFieldsFor(product) {
+  return VARIANT_FIELDS.filter(([key]) => product.variants.some(v => v[key]));
+}
+
+function variantPrice(product, variant) {
+  return Number(product.price) + Number(variant?.priceAdjustment || 0);
+}
+
+// "$10.00" for one price, "From $10.00" when variants cost different amounts.
+function productPriceText(product, currency) {
+  if (!productHasVariants(product)) return `${currency}${Number(product.price).toFixed(2)}`;
+  const prices = product.variants.map(v => variantPrice(product, v));
+  const lowest = Math.min(...prices);
+  const prefix = lowest === Math.max(...prices) ? "" : "From ";
+  return `${prefix}${currency}${lowest.toFixed(2)}`;
+}
+
+function renderVariantPicker(product) {
+  const fields = variantFieldsFor(product).map(([key, label]) => {
+    const values = [...new Set(product.variants.map(v => v[key]).filter(Boolean))];
+    return `
+      <label class="variant-field">
+        <span class="variant-label">${escapeHtml(label)}</span>
+        <select class="variant-select" data-variant-field="${key}" aria-label="${escapeHtml(label)} for ${escapeHtml(product.name)}">
+          <option value="">Choose ${label.toLowerCase()}</option>
+          ${values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}
+        </select>
+      </label>`;
+  }).join("");
+  return `<div class="variant-picker">${fields}<p class="variant-error" data-variant-error role="alert" hidden></p></div>`;
+}
+
+function showVariantError(card, message) {
+  const box = card?.querySelector("[data-variant-error]");
+  if (!box) { alert(message); return; }
+  box.textContent = message;
+  box.hidden = false;
+}
+
+function clearVariantError(card) {
+  const box = card?.querySelector("[data-variant-error]");
+  if (box) { box.textContent = ""; box.hidden = true; }
+}
+
+function readVariantSelection(card, product) {
+  const selection = {};
+  const missing = [];
+  for (const [key, label] of variantFieldsFor(product)) {
+    const value = card.querySelector(`[data-variant-field="${key}"]`)?.value || "";
+    if (value) selection[key] = value; else missing.push({ key, label: label.toLowerCase() });
+  }
+  return { selection, missing };
+}
+
+function findVariant(product, selection) {
+  return product.variants.find(v => variantFieldsFor(product).every(([key]) => v[key] === selection[key])) || null;
+}
+
+// Decides which variant the shopper picked. For a normal product it returns { ok: true, variant: null }.
+// For a variant product it BLOCKS (ok: false) and shows a message until every option is chosen.
+function resolveVariantChoice(product, trigger) {
+  if (!productHasVariants(product)) return { ok: true, variant: null };
+
+  const card = trigger?.closest?.(".product-card")
+    || document.querySelector(`.product-card[data-product-id="${CSS.escape(product.id)}"]`);
+  if (!card) {
+    // e.g. the hero button when the product is hidden by the current filter.
+    alert(`Please choose a size, color or type for "${product.name}" in the collection below.`);
+    scrollToCollection();
+    return { ok: false };
+  }
+  if (!trigger?.closest?.(".product-card")) card.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const { selection, missing } = readVariantSelection(card, product);
+  if (missing.length) {
+    showVariantError(card, `Please select a ${missing.map(m => m.label).join(" and ")} first.`);
+    card.querySelector(`[data-variant-field="${missing[0].key}"]`)?.focus();
+    return { ok: false };
+  }
+  const variant = findVariant(product, selection);
+  if (!variant) {
+    showVariantError(card, "That combination isn't available. Please choose different options.");
+    return { ok: false };
+  }
+  if (Number(variant.stock) <= 0) {
+    showVariantError(card, "Sorry, that option is sold out.");
+    return { ok: false };
+  }
+  clearVariantError(card);
+  return { ok: true, variant, card };
+}
+
+// Keeps the price on the card in step with the dropdowns.
+function handleVariantChange(select) {
+  const card = select.closest(".product-card");
+  const product = StoreDB.getProducts().find(p => p.id === card?.dataset.productId);
+  if (!card || !productHasVariants(product)) return;
+  clearVariantError(card);
+  const currency = StoreDB.getSettings().currency || "$";
+  const { selection, missing } = readVariantSelection(card, product);
+  const priceEl = card.querySelector(".product-price");
+  const variant = missing.length ? null : findVariant(product, selection);
+  if (priceEl) priceEl.textContent = variant ? `${currency}${variantPrice(product, variant).toFixed(2)}` : productPriceText(product, currency);
+  if (variant && Number(variant.stock) <= 0) showVariantError(card, "Sorry, that option is sold out.");
+}
+
 // === CART LOGIC ===
-function addToCart(productId) {
+const cartKey = (productId, variantId) => (variantId ? `${productId}::${variantId}` : productId);
+
+function addToCart(productId, trigger) {
   const products = StoreDB.getProducts();
   const product = products.find(p => p.id === productId);
-  if (!product || !product.inStock) return;
+  if (!product || !isProductAvailable(product)) return false;
 
-  const existing = cart.find(item => item.id === productId);
+  // Variant products: stop here until the shopper has chosen every option.
+  const choice = resolveVariantChoice(product, trigger);
+  if (!choice.ok) return false;
+  const variant = choice.variant;
+
+  const key = cartKey(product.id, variant?.id);
+  const existing = cart.find(item => item.key === key);
+  const nextQuantity = (existing?.quantity || 0) + 1;
+  if (variant && nextQuantity > Number(variant.stock)) {
+    showVariantError(choice.card, `Only ${variant.stock} of that option in stock.`);
+    return false;
+  }
+
   if (existing) {
-    existing.quantity = Math.min(99, existing.quantity + 1);
+    existing.quantity = Math.min(99, nextQuantity);
   } else {
     cart.push({
+      key,
       id: product.id,
+      variantId: variant ? variant.id : null,
+      variantLabel: variant ? variantLabel(variant) : "",
       name: product.name,
       category: product.category,
-      price: Number(product.price),
+      price: variantPrice(product, variant),
       image: product.image,
       quantity: 1
     });
@@ -396,27 +537,34 @@ function addToCart(productId) {
 
   updateCartUI();
   openCartDrawer();
+  return true;
 }
 
-function quickBuy(productId) {
-  addToCart(productId);
+function quickBuy(productId, trigger) {
+  if (!addToCart(productId, trigger)) return;
   closeCartDrawer();
   openCheckoutModal();
 }
 
-function updateQuantity(productId, delta) {
-  const item = cart.find(i => i.id === productId);
+function updateQuantity(key, delta) {
+  const item = cart.find(i => i.key === key);
   if (!item) return;
 
-  item.quantity = Math.min(99, item.quantity + delta);
+  let max = 99;
+  if (item.variantId) {
+    const product = StoreDB.getProducts().find(p => p.id === item.id);
+    const variant = product?.variants?.find(v => v.id === item.variantId);
+    if (variant) max = Math.min(99, Number(variant.stock));
+  }
+  item.quantity = Math.min(max, item.quantity + delta);
   if (item.quantity <= 0) {
-    cart = cart.filter(i => i.id !== productId);
+    cart = cart.filter(i => i.key !== key);
   }
   updateCartUI();
 }
 
-function removeFromCart(productId) {
-  cart = cart.filter(i => i.id !== productId);
+function removeFromCart(key) {
+  cart = cart.filter(i => i.key !== key);
   updateCartUI();
 }
 
@@ -463,15 +611,16 @@ function updateCartUI() {
           <div class="cart-item-body">
             <h4>${escapeHtml(item.name)}</h4>
             <p class="cart-item-meta">${escapeHtml(item.category || 'General')}</p>
+            ${item.variantLabel ? `<p class="cart-item-variant">${escapeHtml(item.variantLabel)}</p>` : ''}
             <div class="cart-item-row">
               <div class="qty-control" aria-label="Quantity">
-                <button data-action="update-quantity" data-id="${escapeHtml(item.id)}" data-delta="-1" type="button" aria-label="Decrease quantity">${icon("minus", 14)}</button>
+                <button data-action="update-quantity" data-id="${escapeHtml(item.key)}" data-delta="-1" type="button" aria-label="Decrease quantity">${icon("minus", 14)}</button>
                 <span>${escapeHtml(item.quantity)}</span>
-                <button data-action="update-quantity" data-id="${escapeHtml(item.id)}" data-delta="1" type="button" aria-label="Increase quantity">${icon("plus", 14)}</button>
+                <button data-action="update-quantity" data-id="${escapeHtml(item.key)}" data-delta="1" type="button" aria-label="Increase quantity">${icon("plus", 14)}</button>
               </div>
               <span class="cart-item-price">${escapeHtml(currency)}${(Number(item.price) * item.quantity).toFixed(2)}</span>
             </div>
-            <button data-action="remove-from-cart" data-id="${escapeHtml(item.id)}" class="cart-item-remove" type="button">Remove</button>
+            <button data-action="remove-from-cart" data-id="${escapeHtml(item.key)}" class="cart-item-remove" type="button">Remove</button>
           </div>
         </div>
       `).join("");
@@ -808,7 +957,7 @@ function setupEventListeners() {
         address: document.getElementById("order-address").value.trim() || "Not provided (Online / Self-Pickup)",
         notes: document.getElementById("order-notes").value.trim()
       },
-      items: cart.map(item => ({ id: item.id, quantity: item.quantity }))
+      items: cart.map(item => ({ id: item.id, variantId: item.variantId || undefined, quantity: item.quantity }))
     };
 
     try {
@@ -864,10 +1013,10 @@ function setupStorefrontActionDelegation() {
     try {
       switch (action) {
         case "add-to-cart":
-          addToCart(id);
+          addToCart(id, btn);
           break;
         case "quick-buy":
-          quickBuy(id);
+          quickBuy(id, btn);
           break;
         case "update-quantity":
           updateQuantity(id, parseInt(delta || "0", 10));
@@ -881,6 +1030,12 @@ function setupStorefrontActionDelegation() {
     }
   });
 }
+
+// Dropdown changes on product cards (update price, clear the "please choose" message).
+document.addEventListener("change", (e) => {
+  const select = e.target.closest?.("[data-variant-field]");
+  if (select) handleVariantChange(select);
+});
 
 // Global exposure for HTML onclick attributes (kept for backward compatibility)
 window.addToCart = addToCart;
