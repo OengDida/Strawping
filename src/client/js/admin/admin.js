@@ -123,13 +123,113 @@ function showToast(message, type = "success") {
 // ==========================================
 // PRODUCTS MANAGER
 // ==========================================
+const MAX_PRODUCT_IMAGE_SOURCE_BYTES = 15 * 1024 * 1024;
+const MAX_PRODUCT_IMAGE_PIXELS = 24_000_000;
+const MAX_PRODUCT_IMAGE_UPLOAD_BYTES = 1_500_000;
+let pendingProductImageDataUrl = "";
+
+function setProductImageStatus(message) {
+  const status = document.getElementById("prod-image-status");
+  if (status) status.textContent = message;
+}
+
+function updateProductImagePreview(source) {
+  const preview = document.getElementById("prod-image-preview");
+  if (!preview) return;
+
+  const safeSource = typeof source === "string" && source.startsWith("data:image/jpeg;base64,")
+    ? source
+    : safeImageUrl(source, "");
+  if (!safeSource) {
+    preview.removeAttribute("src");
+    preview.classList.add("hidden");
+    return;
+  }
+  preview.src = safeSource;
+  preview.classList.remove("hidden");
+}
+
+function resetProductImagePicker() {
+  pendingProductImageDataUrl = "";
+  const fileInput = document.getElementById("prod-image-file");
+  const urlInput = document.getElementById("prod-image");
+  if (fileInput) fileInput.value = "";
+  if (urlInput) urlInput.value = "";
+  updateProductImagePreview("");
+  setProductImageStatus("");
+}
+
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read the optimized image."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function optimizeProductImage(file) {
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error("Choose a JPEG, PNG, or WebP image.");
+  }
+  if (file.size > MAX_PRODUCT_IMAGE_SOURCE_BYTES) {
+    throw new Error("Choose an image smaller than 15 MB.");
+  }
+  if (typeof createImageBitmap !== "function") {
+    throw new Error("This browser cannot process image uploads. Try a recent browser.");
+  }
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("This image could not be opened. Try another image file.");
+  }
+
+  try {
+    if (!bitmap.width || !bitmap.height || bitmap.width * bitmap.height > MAX_PRODUCT_IMAGE_PIXELS) {
+      throw new Error("This image has too many pixels. Choose a smaller image.");
+    }
+
+    let scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const qualities = [0.84, 0.76, 0.68, 0.60];
+    for (let sizePass = 0; sizePass < 4; sizePass += 1) {
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("Could not prepare the image for upload.");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+      for (const quality of qualities) {
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+        if (blob && blob.size <= MAX_PRODUCT_IMAGE_UPLOAD_BYTES) {
+          return await blobToDataUrl(blob);
+        }
+      }
+      scale *= 0.8;
+    }
+    throw new Error("The optimized image is still too large. Choose a smaller image.");
+  } finally {
+    bitmap.close?.();
+  }
+}
+
 function setupProductManager() {
   const modal = document.getElementById("product-modal");
   const openBtn = document.getElementById("open-add-product-btn");
   const closeBtn = document.getElementById("close-product-modal-btn");
   const form = document.getElementById("product-form");
+  const imageUrlInput = document.getElementById("prod-image");
+  const imageFileInput = document.getElementById("prod-image-file");
+  const saveButton = document.getElementById("save-prod-btn");
+
   openBtn?.addEventListener("click", () => {
     form.reset();
+    resetProductImagePicker();
     document.getElementById("prod-id").value = "";
     document.getElementById("product-modal-title").textContent = "Add New Product";
     document.getElementById("prod-instock").checked = true;
@@ -142,6 +242,35 @@ function setupProductManager() {
     modal.classList.remove("flex");
   });
 
+  imageFileInput?.addEventListener("change", async () => {
+    const file = imageFileInput.files?.[0];
+    if (!file) return;
+    saveButton.disabled = true;
+    setProductImageStatus("Preparing image…");
+    try {
+      pendingProductImageDataUrl = await optimizeProductImage(file);
+      imageUrlInput.value = "";
+      updateProductImagePreview(pendingProductImageDataUrl);
+      setProductImageStatus("Image ready. It will upload when you save the product.");
+    } catch (err) {
+      pendingProductImageDataUrl = "";
+      imageFileInput.value = "";
+      updateProductImagePreview(imageUrlInput.value);
+      setProductImageStatus(err.message || "Could not prepare this image.");
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+
+  imageUrlInput?.addEventListener("input", () => {
+    if (pendingProductImageDataUrl) {
+      pendingProductImageDataUrl = "";
+      imageFileInput.value = "";
+      setProductImageStatus("Using the image URL instead.");
+    }
+    updateProductImagePreview(imageUrlInput.value.trim());
+  });
+
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("prod-id").value;
@@ -149,12 +278,21 @@ function setupProductManager() {
       name: document.getElementById("prod-name").value.trim(),
       category: document.getElementById("prod-category").value.trim(),
       price: parseFloat(document.getElementById("prod-price").value) || 0,
-      image: document.getElementById("prod-image").value.trim() || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80",
       description: document.getElementById("prod-description").value.trim(),
       inStock: document.getElementById("prod-instock").checked
     };
 
+    const originalButtonText = saveButton.textContent;
+    saveButton.disabled = true;
     try {
+      if (pendingProductImageDataUrl) {
+        saveButton.textContent = "Uploading image…";
+        productData.image = await StoreDB.uploadProductImage(pendingProductImageDataUrl);
+      } else {
+        productData.image = imageUrlInput.value.trim() || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80";
+      }
+
+      saveButton.textContent = "Saving product…";
       if (id) {
         await StoreDB.updateProduct(id, productData);
       } else {
@@ -169,6 +307,9 @@ function setupProductManager() {
     } catch (err) {
         alert("Failed to save product: " + err.message);
         console.error(err);
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = originalButtonText;
     }
   });
 }
@@ -252,7 +393,9 @@ function editProduct(id) {
   document.getElementById("prod-name").value = prod.name;
   document.getElementById("prod-category").value = prod.category;
   document.getElementById("prod-price").value = prod.price;
+  resetProductImagePicker();
   document.getElementById("prod-image").value = prod.image || "";
+  updateProductImagePreview(prod.image || "");
   document.getElementById("prod-description").value = prod.description || "";
   document.getElementById("prod-instock").checked = prod.inStock;
 

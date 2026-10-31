@@ -173,6 +173,102 @@ test("CSRF validation requires the token from a verified session and matching he
   assert.equal(response.statusCode, 403);
 });
 
+test("product image uploads require an authenticated session and matching CSRF token", async () => {
+  let storageUploads = 0;
+  globalThis.fetch = async url => {
+    if (String(url).includes("store_sessions?session_id_hash=")) return reply([{ session_id_hash: "x" }]);
+    if (String(url).includes("/storage/v1/object/")) storageUploads += 1;
+    return reply({});
+  };
+
+  const unauthorized = await handler(event("/images/upload", "POST", {
+    image: "data:image/jpeg;base64,/9j/AA=="
+  }));
+  assert.equal(unauthorized.statusCode, 401);
+
+  const session = signedSession();
+  const badCsrf = await handler(event(
+    "/images/upload",
+    "POST",
+    { image: "data:image/jpeg;base64,/9j/AA==", csrfToken: session.csrfToken },
+    {
+      authorization: `Bearer ${session.token}`,
+      "x-csrf-token": "wrong-token"
+    }
+  ));
+  assert.equal(badCsrf.statusCode, 403);
+  assert.equal(storageUploads, 0);
+});
+
+test("authenticated product image uploads store a bounded JPEG and return its public URL", async () => {
+  const session = signedSession();
+  const imageBytes = Buffer.from([0xff, 0xd8, 0xff, 0x01, 0x02, 0xff, 0xd9]);
+  let stored;
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes("store_sessions?session_id_hash=")) {
+      return reply([{ session_id_hash: "x" }]);
+    }
+    if (requestUrl.includes("/storage/v1/object/product-images/")) {
+      stored = { url: requestUrl, options };
+      return reply({ Key: requestUrl });
+    }
+    throw new Error(`Unexpected request: ${requestUrl}`);
+  };
+
+  const response = await handler(event(
+    "/images/upload",
+    "POST",
+    { image: `data:image/jpeg;base64,${imageBytes.toString("base64")}`, csrfToken: session.csrfToken },
+    {
+      authorization: `Bearer ${session.token}`,
+      "x-csrf-token": session.csrfToken
+    }
+  ));
+
+  assert.equal(response.statusCode, 201);
+  const result = JSON.parse(response.body);
+  assert.match(result.url, /^https:\/\/supabase\.example\/storage\/v1\/object\/public\/product-images\/[0-9a-f-]+\.jpg$/);
+  assert.equal(stored.options.method, "POST");
+  assert.equal(stored.options.headers["content-type"], "image/jpeg");
+  assert.deepEqual(Buffer.from(stored.options.body), imageBytes);
+});
+
+test("product image upload rejects non-JPEG content and oversized files", async () => {
+  const session = signedSession();
+  let storageUploads = 0;
+  globalThis.fetch = async url => {
+    if (String(url).includes("store_sessions?session_id_hash=")) return reply([{ session_id_hash: "x" }]);
+    if (String(url).includes("/storage/v1/object/")) storageUploads += 1;
+    return reply({});
+  };
+  const headers = {
+    authorization: `Bearer ${session.token}`,
+    "x-csrf-token": session.csrfToken
+  };
+
+  const invalid = await handler(event(
+    "/images/upload",
+    "POST",
+    { image: `data:image/jpeg;base64,${Buffer.from("not-jpeg").toString("base64")}`, csrfToken: session.csrfToken },
+    headers
+  ));
+  assert.equal(invalid.statusCode, 400);
+
+  const oversizedBytes = Buffer.alloc(1_500_001);
+  oversizedBytes[0] = 0xff;
+  oversizedBytes[1] = 0xd8;
+  oversizedBytes[2] = 0xff;
+  const oversized = await handler(event(
+    "/images/upload",
+    "POST",
+    { image: `data:image/jpeg;base64,${oversizedBytes.toString("base64")}`, csrfToken: session.csrfToken },
+    headers
+  ));
+  assert.equal(oversized.statusCode, 400);
+  assert.equal(storageUploads, 0);
+});
+
 test("a valid signed admin session can update settings with its CSRF token", async () => {
   const session = signedSession();
   let written;
@@ -275,7 +371,6 @@ test("order totals and item details are derived from the server catalog", async 
         phone: "123456",
         email: "customer@example.com",
         address: "One Street",
-        coordinates: { latitude: 91, longitude: 104.926033 },
         notes: "Please call"
       },
       items: [{ id: "prod-mug", quantity: 2, name: "Forged name", price: 0.01 }],
@@ -292,73 +387,6 @@ test("order totals and item details are derived from the server catalog", async 
     quantity: 2,
     price: 3.5
   }]);
-  assert.equal(Object.hasOwn(savedOrder.customer, "coordinates"), false);
-});
-
-test("order Telegram notification includes a Google Maps link for detected coordinates", async () => {
-  const previousToken = process.env.TELEGRAM_BOT_TOKEN;
-  const previousChatId = process.env.TELEGRAM_CHAT_ID;
-  process.env.TELEGRAM_BOT_TOKEN = "test-telegram-token";
-  process.env.TELEGRAM_CHAT_ID = "test-chat-id";
-  let savedOrder;
-  let telegramMessage;
-
-  globalThis.fetch = async (url, options = {}) => {
-    const requestUrl = String(url);
-    if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
-    if (requestUrl.includes("key=eq.products")) {
-      return reply([{ value: [{
-        id: "prod-mug",
-        name: "Mug",
-        category: "Home",
-        price: 3.5,
-        image: "",
-        description: "",
-        inStock: true
-      }] }]);
-    }
-    if (requestUrl.endsWith("/rest/v1/store_orders") && options.method === "POST") {
-      savedOrder = JSON.parse(options.body);
-      return reply([savedOrder]);
-    }
-    if (requestUrl.endsWith("/sendMessage")) {
-      telegramMessage = JSON.parse(options.body).text;
-      return reply({ ok: true });
-    }
-    throw new Error(`Unexpected request: ${requestUrl}`);
-  };
-
-  try {
-    const response = await handler(
-      event("/orders", "POST", {
-        customer: {
-          name: "Customer",
-          phone: "123456",
-          email: "customer@example.com",
-          address: "One Street",
-          coordinates: { latitude: 11.516667, longitude: 104.926033 }
-        },
-        items: [{ id: "prod-mug", quantity: 1 }]
-      }),
-      { ip: "203.0.113.10" }
-    );
-
-    assert.equal(response.statusCode, 201);
-    assert.deepEqual(savedOrder.customer.coordinates, {
-      latitude: 11.516667,
-      longitude: 104.926033
-    });
-    assert.match(
-      telegramMessage,
-      /Google Maps: https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=11\.516667%2C104\.926033/
-    );
-    assert.equal(JSON.parse(response.body).telegramSent, true);
-  } finally {
-    if (previousToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
-    else process.env.TELEGRAM_BOT_TOKEN = previousToken;
-    if (previousChatId === undefined) delete process.env.TELEGRAM_CHAT_ID;
-    else process.env.TELEGRAM_CHAT_ID = previousChatId;
-  }
 });
 
 test("order creation fails closed when the rate limiter denies the request", async () => {

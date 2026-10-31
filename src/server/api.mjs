@@ -18,7 +18,7 @@ const json = (statusCode, body, extraHeaders = {}) => ({
     "referrer-policy": "no-referrer",
     "x-frame-options": "DENY",
     "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
-    "permissions-policy": "camera=(), microphone=(), geolocation=(self)",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
     "strict-transport-security": "max-age=63072000; includeSubDomains",
     ...extraHeaders
   },
@@ -30,6 +30,9 @@ const SESSION_TTL_SECONDS = 60 * 60 * 2;
 const SESSION_ISSUER = "strawping-store";
 const SESSION_AUDIENCE = "strawping-admin";
 const MIN_ADMIN_PASSWORD_LENGTH = 12;
+const PRODUCT_IMAGE_BUCKET = "product-images";
+const MAX_PRODUCT_IMAGE_BYTES = 1_500_000;
+const MAX_IMAGE_UPLOAD_REQUEST_BYTES = 2_100_000;
 
 function env(name) {
   const value = process.env[name];
@@ -425,7 +428,6 @@ function normalizeCustomer(value) {
   const telegram = cleanLine(value.telegram ?? "", 80);
   const address = cleanLine(value.address ?? "Not provided (Online / Self-Pickup)", 500);
   const notes = cleanLine(value.notes ?? "", 1000);
-  const coordinates = normalizeCoordinates(value.coordinates);
 
   if (
     name === null || phone === null || email === null ||
@@ -434,37 +436,17 @@ function normalizeCustomer(value) {
   ) {
     return null;
   }
-  return {
-    name,
-    phone,
-    email,
-    telegram,
-    address,
-    notes,
-    ...(coordinates ? { coordinates } : {})
-  };
+  return { name, phone, email, telegram, address, notes };
 }
 
-function normalizeCoordinates(value) {
-  if (!isRecord(value)) return null;
-  const { latitude, longitude } = value;
-  if (
-    typeof latitude !== "number" || !Number.isFinite(latitude) ||
-    typeof longitude !== "number" || !Number.isFinite(longitude) ||
-    latitude < -90 || latitude > 90 ||
-    longitude < -180 || longitude > 180
-  ) {
-    return null;
-  }
-  return { latitude, longitude };
-}
-
-function parseBody(event) {
+function parseBody(event, maxBytes = 100000) {
   if (!event.body) return {};
   const raw = event.isBase64Encoded
     ? Buffer.from(event.body, "base64").toString("utf8")
     : event.body;
-  if (raw.length > 100000) throw Object.assign(new Error("Request too large"), { status: 413 });
+  if (Buffer.byteLength(raw, "utf8") > maxBytes) {
+    throw Object.assign(new Error("Request too large"), { status: 413 });
+  }
   try {
     return JSON.parse(raw);
   } catch {
@@ -474,10 +456,6 @@ function parseBody(event) {
 
 function formatOrderTelegramMessage(order) {
   const customer = order.customer;
-  const coordinates = normalizeCoordinates(customer.coordinates);
-  const mapsLink = coordinates
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coordinates.latitude},${coordinates.longitude}`)}`
-    : "";
   const lines = [
     `🛒 New Strawping order #${order.id}`,
     `Customer: ${customer.name}`,
@@ -485,7 +463,6 @@ function formatOrderTelegramMessage(order) {
     customer.telegram ? `Telegram: ${customer.telegram}` : "",
     customer.email ? `Email: ${customer.email}` : "",
     `Address: ${customer.address}`,
-    mapsLink ? `📍 Google Maps: ${mapsLink}` : "",
     customer.notes ? `Notes: ${customer.notes}` : "",
     "",
     "Items:",
@@ -557,6 +534,62 @@ export async function handler(event, context = {}) {
       if (!session) return json(401, { error: "Unauthorized" });
       await revokeAdminSession(session);
       return json(200, { success: true });
+    }
+
+    if (resource === "images" && segments[1] === "upload" && method === "POST") {
+      const session = await verifyAdminSession(event);
+      if (!session) return json(401, { error: "Unauthorized" });
+
+      const body = parseBody(event, MAX_IMAGE_UPLOAD_REQUEST_BYTES);
+      if (!isRecord(body)) return json(400, { error: "Invalid image upload" });
+      if (!verifyCsrfToken(event, body.csrfToken, session)) {
+        return json(403, { error: "Invalid CSRF token" });
+      }
+
+      const match = typeof body.image === "string"
+        ? /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/.exec(body.image)
+        : null;
+      if (!match) return json(400, { error: "Upload a valid JPEG image." });
+
+      const encoded = match[1];
+      const imageBytes = Buffer.from(encoded, "base64");
+      if (
+        imageBytes.length < 4 ||
+        imageBytes.length > MAX_PRODUCT_IMAGE_BYTES ||
+        imageBytes.toString("base64") !== encoded ||
+        imageBytes[0] !== 0xff ||
+        imageBytes[1] !== 0xd8 ||
+        imageBytes[2] !== 0xff
+      ) {
+        return json(400, { error: "The image is invalid or exceeds the 1.5 MB upload limit." });
+      }
+
+      const objectName = `${crypto.randomUUID()}.jpg`;
+      const supabaseUrl = env("SUPABASE_URL").replace(/\/+$/, "");
+      const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
+      const storageResponse = await fetch(
+        `${supabaseUrl}/storage/v1/object/${PRODUCT_IMAGE_BUCKET}/${objectName}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: serviceKey,
+            authorization: `Bearer ${serviceKey}`,
+            "content-type": "image/jpeg",
+            "cache-control": "31536000",
+            "x-upsert": "false"
+          },
+          body: imageBytes,
+          signal: AbortSignal.timeout(15000)
+        }
+      );
+      if (!storageResponse.ok) {
+        console.warn("Product image storage upload failed", { status: storageResponse.status });
+        return json(502, { error: "Image upload failed. Check the product-images bucket setup in Supabase." });
+      }
+
+      return json(201, {
+        url: `${supabaseUrl}/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/${objectName}`
+      });
     }
 
     if (resource === "products" && method === "GET") {

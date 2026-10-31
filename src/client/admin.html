@@ -270,7 +270,15 @@
         <div class="field">
           <label for="prod-image">Image URL</label>
           <input type="url" id="prod-image" placeholder="https://images.unsplash.com/..." />
-          <p class="field-hint">Paste any direct image link or Unsplash photo link.</p>
+          <p class="field-hint">Paste an image link, or upload a file below. An uploaded file takes priority.</p>
+        </div>
+
+        <div class="field">
+          <label for="prod-image-file">Upload image from your device</label>
+          <input type="file" id="prod-image-file" accept="image/jpeg,image/png,image/webp" />
+          <p class="field-hint">JPEG, PNG, or WebP. Images are optimized as JPEG before upload (up to 15 MB source file).</p>
+          <img id="prod-image-preview" class="product-image-preview hidden" alt="Product image preview" />
+          <p id="prod-image-status" class="field-hint" role="status" aria-live="polite"></p>
         </div>
 
         <div class="field">

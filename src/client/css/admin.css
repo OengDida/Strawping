@@ -142,6 +142,7 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
 .field input.w-short { width: 8rem; }
 .field input.w-mid { max-width: 22rem; }
 .field-hint { margin-top: 8px; color: var(--faint); font-size: 11px; line-height: 17px; }
+.product-image-preview { width: 144px; height: 144px; margin-top: 12px; border: 1px solid var(--line-soft); background: var(--sand); object-fit: cover; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .toggle-row { padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--sand); }
 .toggle-row h4 { font-size: 12px; font-weight: 700; }

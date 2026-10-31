@@ -105,3 +105,12 @@ create table if not exists public.store_sessions (
 alter table public.store_sessions enable row level security;
 revoke all on public.store_sessions from public, anon, authenticated;
 create index if not exists store_sessions_expires_at_idx on public.store_sessions (expires_at);
+
+-- Publicly readable product images; uploads are performed only by the
+-- authenticated server API using the Supabase service-role key.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('product-images', 'product-images', true, 1500000, array['image/jpeg']::text[])
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;

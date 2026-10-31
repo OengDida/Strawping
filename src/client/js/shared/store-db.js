@@ -20,7 +20,7 @@ class StoreDB {
     const headers={"Content-Type":"application/json",...(options.headers||{})};
     const method = options.method ? options.method.toUpperCase() : "GET";
     if(this.token()) headers.Authorization=`Bearer ${this.token()}`;
-    const needsCsrf = ["PUT","PATCH","DELETE"].includes(method) || path === "notify/test";
+    const needsCsrf = ["PUT","PATCH","DELETE"].includes(method) || path === "notify/test" || path === "images/upload";
     if(needsCsrf) {
       headers["X-CSRF-Token"]=this.csrfToken();
       let bodyObj = {};
@@ -81,6 +81,11 @@ class StoreDB {
     if(!Array.isArray(products)||products.length>500) throw new Error("Invalid product list");
     const r=await this.request("products",{method:"PUT",body:JSON.stringify({products})});
     localStorage.setItem(this.PRODUCTS_KEY,JSON.stringify(r.products)); return r.products;
+  }
+  static async uploadProductImage(image){
+    const result=await this.request("images/upload",{method:"POST",body:JSON.stringify({image})});
+    if(typeof result.url!=="string"||!result.url) throw new Error("Image upload did not return a URL.");
+    return result.url;
   }
   static async addProduct(product){const p={...product,id:"prod-"+crypto.randomUUID(),inStock:product.inStock!==false};const list=[p,...this.getProducts()];await this.saveProducts(list);return p}
   static async updateProduct(id,fields){const list=this.getProducts();const i=list.findIndex(p=>p.id===id);if(i<0)return null;list[i]={...list[i],...fields};await this.saveProducts(list);return list[i]}
