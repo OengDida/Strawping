@@ -1,6 +1,6 @@
 import { Truck, RotateCcw, ShieldCheck } from 'lucide-react';
-import Reveal from './Reveal.jsx';
-import { formatPrice, FREE_SHIPPING_THRESHOLD } from '../data.js';
+import Reveal from '../../../shared/components/Reveal.jsx';
+import { formatPrice, FREE_SHIPPING_THRESHOLD } from '../model.js';
 
 const POINTS = [
   { icon: Truck, title: 'Shipping', text: `Free over ${formatPrice(FREE_SHIPPING_THRESHOLD)}. Dispatched within 24 hours.` },

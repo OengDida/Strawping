@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon } from 'lucide-react';
-import { ease } from '../motion.js';
+import { ease } from '../../../shared/motion.js';
 
 const centerOf = (el) => {
   const r = el.getBoundingClientRect();

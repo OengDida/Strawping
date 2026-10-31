@@ -1,9 +1,9 @@
 import { forwardRef, useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import GlassButton from './GlassButton.jsx';
-import { ease } from '../motion.js';
-import { formatPrice } from '../data.js';
+import GlassButton from '../../../shared/components/GlassButton.jsx';
+import { ease } from '../../../shared/motion.js';
+import { formatPrice } from '../model.js';
 
 const line = {
   hidden: { y: '110%' },

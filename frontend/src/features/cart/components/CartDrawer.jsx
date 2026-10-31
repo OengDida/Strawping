@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
-import Drawer from './Drawer.jsx';
-import Stepper from './Stepper.jsx';
-import GlassButton from './GlassButton.jsx';
-import { formatPrice } from '../data.js';
-import { submitOrder } from '../services/api.js';
+import Drawer from '../../../shared/components/Drawer.jsx';
+import Stepper from '../../../shared/components/Stepper.jsx';
+import GlassButton from '../../../shared/components/GlassButton.jsx';
+import { formatPrice } from '../../catalog/model.js';
+import { submitOrder } from '../../../shared/services/api.js';
 
 const emptyForm = { name: '', phone: '', email: '', telegram: '', address: '', notes: '' };
 export default function CartDrawer({ open, onClose, cart, dispatch }) {

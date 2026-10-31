@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build --config frontend/vite.config.js",
-    "check": "node --check src/server/api.mjs && node --check api/router.mjs && node --check src/client/js/storefront/app.js && node --check src/client/js/admin/admin.js && node --check src/client/js/shared/store-db.js",
+    "check": "node --check src/server/api.mjs && node --check api/router.mjs && node --check src/client/js/admin/admin.js && node --check src/client/js/shared/store-db.js",
     "test": "node --test"
   },
   "dependencies": {

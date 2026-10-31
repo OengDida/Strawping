@@ -1,8 +1,8 @@
 import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
 import { Eye, Plus } from 'lucide-react';
-import { ease } from '../motion.js';
-import { formatPrice } from '../data.js';
+import { ease } from '../../../shared/motion.js';
+import { formatPrice } from '../model.js';
 
 const ProductCard = forwardRef(function ProductCard({ product, index, onQuickView, onAdd }, ref) {
   return (

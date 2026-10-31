@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, ChevronLeft, ChevronRight } from 'lucide-react';
-import Stepper from './Stepper.jsx';
-import { useEscape } from '../hooks.js';
-import { defaultVariant, formatPrice, variantPrice } from '../data.js';
+import Stepper from '../../../shared/components/Stepper.jsx';
+import { useEscape } from '../../../shared/hooks/index.js';
+import { defaultVariant, formatPrice, variantPrice } from '../model.js';
 
 function Body({ product, onClose, onAdd }) {
   const [imageIndex, setImageIndex] = useState(0);

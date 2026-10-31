@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowLeft } from 'lucide-react';
-import { useEscape } from '../hooks.js';
+import { useEscape } from '../hooks/index.js';
 import { drawerSpring } from '../motion.js';
 
 /** Right-hand slide-out panel with a blurred backdrop. */

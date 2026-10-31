@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { ChevronDown, ArrowUpDown } from 'lucide-react';
-import Reveal from './Reveal.jsx';
-import { spring } from '../motion.js';
+import Reveal from '../../../shared/components/Reveal.jsx';
+import { spring } from '../../../shared/motion.js';
 
 /** Returns siblings so the pill bar can stay sticky for the whole shop section. */
 export default function FilterBar({ categories, active, onChange, counts, sort, onSort, shown }) {

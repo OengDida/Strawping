@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ShoppingBag, Menu, X } from 'lucide-react';
-import { ease } from '../motion.js';
+import { ease } from '../../../shared/motion.js';
 import { ThemeToggle, ThemeSwitchRow } from './ThemeToggle.jsx';
 
 const LINKS = [

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, X, ArrowUpRight } from 'lucide-react';
-import { useEscape } from '../hooks.js';
-import { ease } from '../motion.js';
-import { formatPrice } from '../data.js';
+import { useEscape } from '../../../shared/hooks/index.js';
+import { ease } from '../../../shared/motion.js';
+import { formatPrice } from '../model.js';
 
 export default function SearchOverlay({ open, onClose, onSelect, products = [] }) {
   const [query, setQuery] = useState('');
