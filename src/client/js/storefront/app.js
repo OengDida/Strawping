@@ -8,7 +8,12 @@ function safeImageUrl(value, fallback = "") {
 }
 // A product's own photo URL, or "" — an empty value would otherwise resolve to the page URL.
 function productImage(product) {
-  return product && product.image ? safeImageUrl(product.image) : "";
+  return product ? safeImageUrl(product.thumbnail || product.image || product.images?.[0] || "") : "";
+}
+function productImages(product) {
+  const values = Array.isArray(product?.images) ? product.images : [product?.image];
+  const list = [...new Set(values.filter(Boolean).map(url => safeImageUrl(url)).filter(Boolean))];
+  return list.length ? list : [FALLBACK_IMAGE];
 }
 
 // Inline stroke icons (same set as the storefront markup) so no icon CDN is needed.
@@ -72,6 +77,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   setupOverlays();
   setupLocationDetector();
   setupStorefrontActionDelegation(); // event delegation for data-action buttons
+  setupProductDetail();
   try {
     await initStore();
   } catch (err) {
@@ -272,7 +278,7 @@ function renderProducts(productsOverride) {
       <article class="product-card ${isOut ? 'is-sold-out' : ''}" data-product-id="${escapeHtml(product.id)}">
         <div class="product-media">
           <img
-            src="${escapeHtml(safeImageUrl(product.image, FALLBACK_IMAGE))}"
+            src="${escapeHtml(productImage(product) || FALLBACK_IMAGE)}"
             alt="${escapeHtml(product.name)}"
             class="product-image"
             loading="lazy"
@@ -350,6 +356,91 @@ function renderStoryImage(products, featured) {
   image.alt = pick.name || "";
   image.hidden = false;
   fallback.hidden = true;
+}
+
+// === Product detail view: shared-element transition + swipeable gallery ===
+let activeDetailProductId = null;
+function withViewTransition(callback) {
+  if (document.startViewTransition) document.startViewTransition(callback);
+  else callback();
+}
+function openProductDetail(productId, sourceImage) {
+  const product = StoreDB.getProducts().find(item => item.id === productId);
+  if (!product) return;
+  const images = productImages(product);
+  const detail = document.getElementById("product-detail-overlay");
+  if (!detail) return;
+  activeDetailProductId = productId;
+  const currency = StoreDB.getSettings().currency || "$";
+  const variantControls = productHasVariants(product) ? variantFieldsFor(product).map(([key,label]) => {
+    const values = [...new Set(product.variants.map(v => v[key]).filter(Boolean))];
+    return `<label class="detail-option">${escapeHtml(label)}<select data-variant-field="${key}" aria-label="Choose ${escapeHtml(label)}"><option value="">Choose ${escapeHtml(label)}</option>${values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("")}</select></label>`;
+  }).join("") : "";
+  const out = !isProductAvailable(product);
+  const main = detail.querySelector(".detail-main-image");
+  detail.querySelector(".product-detail-panel").dataset.productId = product.id;
+  detail.querySelector(".detail-content").innerHTML = `
+    <div class="detail-gallery">
+      <div class="detail-image-stage"><button type="button" class="detail-arrow detail-prev" aria-label="Previous image">‹</button><img class="detail-main-image" src="${escapeHtml(images[0])}" alt="${escapeHtml(product.name)}" /><button type="button" class="detail-arrow detail-next" aria-label="Next image">›</button></div>
+      <div class="detail-thumbnails">${images.map((url,i)=>`<button type="button" data-gallery-index="${i}" class="${i===0?'is-active':''}" aria-label="View image ${i+1}"><img src="${escapeHtml(url)}" alt="" /></button>`).join("")}</div>
+    </div>
+    <div class="detail-info"><p class="product-category">${escapeHtml(product.category || "General")}</p><h2>${escapeHtml(product.name)}</h2><p class="detail-price">${escapeHtml(productPriceText(product,currency))}</p><p class="detail-description">${escapeHtml(product.description || "")}</p>
+      <div class="detail-variants">${variantControls}</div><p class="variant-error" data-variant-error hidden></p>
+      ${out ? '<button class="product-soldout" disabled>Sold out</button>' : `<button type="button" class="btn-solid detail-add" data-action="add-to-cart" data-id="${escapeHtml(product.id)}">Add to bag</button><button type="button" class="detail-buy" data-action="quick-buy" data-id="${escapeHtml(product.id)}">Buy now</button>`}
+    </div>`;
+  const image = detail.querySelector(".detail-main-image");
+  const source = sourceImage || document.querySelector(`.product-card[data-product-id="${CSS.escape(product.id)}"] .product-image`);
+  if (source) source.style.viewTransitionName = "product-shared-image";
+  image.style.viewTransitionName = "";
+  detail.hidden = false;
+  document.body.classList.add("detail-open");
+  withViewTransition(() => {
+    if (source) source.style.viewTransitionName = "none";
+    image.style.viewTransitionName = "product-shared-image";
+    detail.classList.add("is-open");
+  });
+  let index = 0;
+  const setImage = next => {
+    index = (next + images.length) % images.length;
+    image.src = images[index];
+    detail.querySelectorAll("[data-gallery-index]").forEach((button,i)=>button.classList.toggle("is-active",i===index));
+  };
+  detail.querySelector(".detail-prev").onclick = () => setImage(index - 1);
+  detail.querySelector(".detail-next").onclick = () => setImage(index + 1);
+  detail.querySelector(".detail-thumbnails").onclick = e => { const b=e.target.closest("[data-gallery-index]"); if(b) setImage(Number(b.dataset.galleryIndex)); };
+  const stage = detail.querySelector(".detail-image-stage");
+  let touchX = 0;
+  stage.ontouchstart = e => { touchX = e.changedTouches[0].clientX; };
+  stage.ontouchend = e => { const dx=e.changedTouches[0].clientX-touchX; if(Math.abs(dx)>35) setImage(index+(dx<0?1:-1)); };
+  detail.querySelector(".detail-close").focus();
+}
+function closeProductDetail() {
+  const detail = document.getElementById("product-detail-overlay");
+  if (!detail || detail.hidden) return;
+  withViewTransition(() => detail.classList.remove("is-open"));
+  const finishClose = () => {
+    detail.hidden = true;
+    document.body.classList.remove("detail-open");
+    activeDetailProductId = null;
+    document.querySelectorAll('.product-image').forEach(img => img.style.viewTransitionName = "");
+  };
+  detail.addEventListener("transitionend", function onEnd(event) {
+    if (event.target !== detail || event.propertyName !== "opacity") return;
+    detail.removeEventListener("transitionend", onEnd);
+    finishClose();
+  });
+  // Reduced-motion browsers may skip the opacity transition entirely.
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) finishClose();
+}
+function setupProductDetail() {
+  if (document.getElementById("product-detail-overlay")) return;
+  const overlay = document.createElement("section");
+  overlay.id = "product-detail-overlay"; overlay.className = "product-detail-overlay"; overlay.hidden = true;
+  overlay.innerHTML = `<div class="product-detail-panel product-card"><button type="button" class="detail-close" aria-label="Close product details">×</button><div class="detail-content"></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".detail-close").addEventListener("click", closeProductDetail);
+  overlay.addEventListener("click", e => { if(e.target===overlay) closeProductDetail(); });
+  document.addEventListener("keydown", e => { if(e.key==="Escape") closeProductDetail(); });
 }
 
 // === WISHLIST (saved on this device only) ===
@@ -492,7 +583,7 @@ function handleVariantChange(select) {
   clearVariantError(card);
   const currency = StoreDB.getSettings().currency || "$";
   const { selection, missing } = readVariantSelection(card, product);
-  const priceEl = card.querySelector(".product-price");
+  const priceEl = card.querySelector(".product-price, .detail-price");
   const variant = missing.length ? null : findVariant(product, selection);
   if (priceEl) priceEl.textContent = variant ? `${currency}${variantPrice(product, variant).toFixed(2)}` : productPriceText(product, currency);
   if (variant && Number(variant.stock) <= 0) showVariantError(card, "Sorry, that option is sold out.");
@@ -530,7 +621,7 @@ function addToCart(productId, trigger) {
       name: product.name,
       category: product.category,
       price: variantPrice(product, variant),
-      image: product.image,
+      image: productImage(product),
       quantity: 1
     });
   }
@@ -541,9 +632,10 @@ function addToCart(productId, trigger) {
 }
 
 function quickBuy(productId, trigger) {
-  if (!addToCart(productId, trigger)) return;
+  if (!addToCart(productId, trigger)) return false;
   closeCartDrawer();
   openCheckoutModal();
+  return true;
 }
 
 function updateQuantity(key, delta) {
@@ -1004,7 +1096,11 @@ function setupEventListeners() {
 function setupStorefrontActionDelegation() {
   document.body.addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-action]");
-    if (!btn) return;
+    if (!btn) {
+      const card = e.target.closest(".product-card[data-product-id]");
+      if (card && !e.target.closest("button,select,a,input")) openProductDetail(card.dataset.productId, card.querySelector(".product-image"));
+      return;
+    }
     const action = btn.getAttribute("data-action");
     const id = btn.getAttribute("data-id");
     const delta = btn.getAttribute("data-delta");
@@ -1013,10 +1109,10 @@ function setupStorefrontActionDelegation() {
     try {
       switch (action) {
         case "add-to-cart":
-          addToCart(id, btn);
+          if (addToCart(id, btn) && btn.closest(".product-detail-panel")) closeProductDetail();
           break;
         case "quick-buy":
-          quickBuy(id, btn);
+          if (quickBuy(id, btn) && btn.closest(".product-detail-panel")) closeProductDetail();
           break;
         case "update-quantity":
           updateQuantity(id, parseInt(delta || "0", 10));

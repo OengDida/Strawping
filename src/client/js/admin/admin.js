@@ -126,36 +126,33 @@ function showToast(message, type = "success") {
 const MAX_PRODUCT_IMAGE_SOURCE_BYTES = 15 * 1024 * 1024;
 const MAX_PRODUCT_IMAGE_PIXELS = 24_000_000;
 const MAX_PRODUCT_IMAGE_UPLOAD_BYTES = 1_500_000;
-let pendingProductImageDataUrl = "";
+let pendingProductImages = [];
+let selectedThumbnailIndex = 0;
 
 function setProductImageStatus(message) {
   const status = document.getElementById("prod-image-status");
   if (status) status.textContent = message;
 }
 
-function updateProductImagePreview(source) {
-  const preview = document.getElementById("prod-image-preview");
-  if (!preview) return;
-
-  const safeSource = typeof source === "string" && source.startsWith("data:image/jpeg;base64,")
-    ? source
-    : safeImageUrl(source, "");
-  if (!safeSource) {
-    preview.removeAttribute("src");
-    preview.classList.add("hidden");
-    return;
-  }
-  preview.src = safeSource;
-  preview.classList.remove("hidden");
+function renderProductImageGallery() {
+  const gallery = document.getElementById("prod-image-gallery");
+  if (!gallery) return;
+  gallery.innerHTML = pendingProductImages.map((item, index) => `
+    <div class="admin-image-tile ${index === selectedThumbnailIndex ? "is-thumbnail" : ""}">
+      <img src="${escapeHtml(item.dataUrl || safeImageUrl(item.url))}" alt="Product photo ${index + 1}" />
+      <button type="button" data-thumb-index="${index}" aria-pressed="${index === selectedThumbnailIndex}" title="Set as catalog thumbnail">${index === selectedThumbnailIndex ? "★ Thumbnail" : "☆ Set thumbnail"}</button>
+      <button type="button" data-remove-image="${index}" aria-label="Remove photo ${index + 1}">×</button>
+    </div>`).join("");
 }
 
-function resetProductImagePicker() {
-  pendingProductImageDataUrl = "";
+function resetProductImagePicker(images = [], thumbnail = "") {
+  pendingProductImages = (Array.isArray(images) ? images : []).map(url => ({ url }));
+  selectedThumbnailIndex = Math.max(0, pendingProductImages.findIndex(item => item.url === thumbnail));
   const fileInput = document.getElementById("prod-image-file");
   const urlInput = document.getElementById("prod-image");
   if (fileInput) fileInput.value = "";
   if (urlInput) urlInput.value = "";
-  updateProductImagePreview("");
+  renderProductImageGallery();
   setProductImageStatus("");
 }
 
@@ -327,32 +324,44 @@ function setupProductManager() {
   });
 
   imageFileInput?.addEventListener("change", async () => {
-    const file = imageFileInput.files?.[0];
-    if (!file) return;
-    saveButton.disabled = true;
-    setProductImageStatus("Preparing image…");
-    try {
-      pendingProductImageDataUrl = await optimizeProductImage(file);
-      imageUrlInput.value = "";
-      updateProductImagePreview(pendingProductImageDataUrl);
-      setProductImageStatus("Image ready. It will upload when you save the product.");
-    } catch (err) {
-      pendingProductImageDataUrl = "";
-      imageFileInput.value = "";
-      updateProductImagePreview(imageUrlInput.value);
-      setProductImageStatus(err.message || "Could not prepare this image.");
-    } finally {
-      saveButton.disabled = false;
+    const files = [...(imageFileInput.files || [])];
+    if (!files.length) return;
+    if (pendingProductImages.length + files.length > 20) {
+      setProductImageStatus("You can add up to 20 photos per product."); imageFileInput.value = ""; return;
     }
+    saveButton.disabled = true;
+    try {
+      for (const file of files) {
+        setProductImageStatus(`Preparing photo ${pendingProductImages.length + 1}…`);
+        pendingProductImages.push({ dataUrl: await optimizeProductImage(file) });
+      }
+      if (pendingProductImages.length === files.length) selectedThumbnailIndex = 0;
+      renderProductImageGallery();
+      setProductImageStatus("Photos ready. They will upload when you save the product.");
+    } catch (err) {
+      setProductImageStatus(err.message || "Could not prepare these photos.");
+    } finally { imageFileInput.value = ""; saveButton.disabled = false; }
   });
 
-  imageUrlInput?.addEventListener("input", () => {
-    if (pendingProductImageDataUrl) {
-      pendingProductImageDataUrl = "";
-      imageFileInput.value = "";
-      setProductImageStatus("Using the image URL instead.");
+  document.getElementById("prod-image-gallery")?.addEventListener("click", (event) => {
+    const thumb = event.target.closest("[data-thumb-index]");
+    const remove = event.target.closest("[data-remove-image]");
+    if (thumb) selectedThumbnailIndex = Number(thumb.dataset.thumbIndex);
+    if (remove) {
+      const index = Number(remove.dataset.removeImage);
+      pendingProductImages.splice(index, 1);
+      if (selectedThumbnailIndex >= pendingProductImages.length) selectedThumbnailIndex = Math.max(0, pendingProductImages.length - 1);
+      else if (index < selectedThumbnailIndex) selectedThumbnailIndex--;
     }
-    updateProductImagePreview(imageUrlInput.value.trim());
+    renderProductImageGallery();
+  });
+
+  imageUrlInput?.addEventListener("change", () => {
+    const url = imageUrlInput.value.trim();
+    if (url && !pendingProductImages.some(item => item.url === url)) {
+      if (pendingProductImages.length >= 20) { setProductImageStatus("You can add up to 20 photos."); return; }
+      pendingProductImages.unshift({ url }); selectedThumbnailIndex = 0; renderProductImageGallery();
+    }
   });
 
   form?.addEventListener("submit", async (e) => {
@@ -379,12 +388,16 @@ function setupProductManager() {
     const originalButtonText = saveButton.textContent;
     saveButton.disabled = true;
     try {
-      if (pendingProductImageDataUrl) {
-        saveButton.textContent = "Uploading image…";
-        productData.image = await StoreDB.uploadProductImage(pendingProductImageDataUrl);
-      } else {
-        productData.image = imageUrlInput.value.trim() || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80";
+      saveButton.textContent = "Uploading photos…";
+      const imageUrls = [];
+      for (const item of pendingProductImages) {
+        imageUrls.push(item.url || await StoreDB.uploadProductImage(item.dataUrl));
       }
+      if (!imageUrls.length && imageUrlInput.value.trim()) imageUrls.push(imageUrlInput.value.trim());
+      if (!imageUrls.length) imageUrls.push("https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80");
+      productData.images = imageUrls;
+      productData.thumbnail = imageUrls[Math.min(selectedThumbnailIndex, imageUrls.length - 1)];
+      productData.image = productData.thumbnail;
 
       saveButton.textContent = "Saving product…";
       if (id) {
@@ -488,9 +501,7 @@ function editProduct(id) {
   document.getElementById("prod-name").value = prod.name;
   document.getElementById("prod-category").value = prod.category;
   document.getElementById("prod-price").value = prod.price;
-  resetProductImagePicker();
-  document.getElementById("prod-image").value = prod.image || "";
-  updateProductImagePreview(prod.image || "");
+  resetProductImagePicker(prod.images?.length ? prod.images : (prod.image ? [prod.image] : []), prod.thumbnail || prod.image || "");
   document.getElementById("prod-description").value = prod.description || "";
   document.getElementById("prod-instock").checked = prod.inStock;
   resetVariantEditor(prod);

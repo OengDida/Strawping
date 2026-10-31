@@ -141,6 +141,8 @@ test("settings and products are readable through the public storefront API", asy
     category: "<b>Home</b>",
     price: 4.25,
     image: "https://images.example/mug.jpg",
+    images: ["https://images.example/mug.jpg"],
+    thumbnail: "https://images.example/mug.jpg",
     description: "Cup",
     inStock: true
   }]);
@@ -410,6 +412,8 @@ test("Vercel adapter forwards /api/products to the shared API handler", async ()
       category: "Home",
       price: 4.25,
       image: "",
+      images: [],
+      thumbnail: "",
       description: "",
       inStock: true
     }] }]);
@@ -428,6 +432,8 @@ test("Vercel adapter forwards /api/products to the shared API handler", async ()
       category: "Home",
       price: 4.25,
       image: "",
+      images: [],
+      thumbnail: "",
       description: "",
       inStock: true
     }]

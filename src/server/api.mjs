@@ -462,15 +462,20 @@ function normalizeProduct(value) {
   const priceCents = Math.round(value.price * 100);
   if (!Number.isSafeInteger(priceCents) || Math.abs(value.price - priceCents / 100) > 1e-8) return null;
 
-  const image = cleanLine(value.image ?? "", 2048);
-  if (image === null) return null;
-  if (image) {
-    try {
-      if (new URL(image).protocol !== "https:") return null;
-    } catch {
-      return null;
-    }
+  const rawImages = Array.isArray(value.images) ? value.images : (value.image ? [value.image] : []);
+  if (rawImages.length > 20) return null;
+  const images = [];
+  for (const rawImage of rawImages) {
+    const url = cleanLine(rawImage, 2048);
+    if (url === null || !url) return null;
+    try { if (new URL(url).protocol !== "https:") return null; } catch { return null; }
+    if (!images.includes(url)) images.push(url);
   }
+  const legacyImage = cleanLine(value.image ?? "", 2048);
+  if (legacyImage === null) return null;
+  const thumbnail = cleanLine(value.thumbnail ?? images[0] ?? legacyImage, 2048);
+  if (thumbnail === null || (thumbnail && !images.includes(thumbnail) && images.length)) return null;
+  const image = thumbnail || images[0] || legacyImage;
   if (typeof value.inStock !== "boolean") return null;
   if (value.hasVariants !== undefined && typeof value.hasVariants !== "boolean") return null;
 
@@ -480,6 +485,8 @@ function normalizeProduct(value) {
     category: category || "General",
     price: priceCents / 100,
     image,
+    images: images.length ? images : (image ? [image] : []),
+    thumbnail: thumbnail || image,
     description,
     inStock: value.inStock
   };
