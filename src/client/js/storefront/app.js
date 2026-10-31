@@ -1076,8 +1076,13 @@ function setupStorefrontActionDelegation() {
   document.body.addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-action]");
     if (!btn) {
-      const card = e.target.closest(".product-card[data-product-id]");
-      if (card && !e.target.closest("button,select,a,input")) openProductDetail(card.dataset.productId, card.querySelector(".product-image"));
+      // Only catalog cards should open the detail view. The detail panel also
+      // uses the product-card styling class, so exclude it by requiring the
+      // card to be a descendant of #products-grid.
+      const card = e.target.closest("#products-grid .product-card[data-product-id]");
+      if (card && !e.target.closest("button,select,a,input")) {
+        openProductDetail(card.dataset.productId, card.querySelector(".product-image"));
+      }
       return;
     }
     const action = btn.getAttribute("data-action");
