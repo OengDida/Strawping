@@ -1,9 +1,31 @@
 {
-  "name": "strawping-store",
+  "name": "strawp",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/server/api.mjs && node --check api/router.mjs && node --check src/client/js/storefront/app.js && node --check src/client/js/admin/admin.js && node --check src/client/js/shared/store-db.js && node --check src/client/js/storefront/tailwind-config.js",
+    "build": "vite build --config frontend/vite.config.js",
+    "check": "node --check src/server/api.mjs && node --check api/router.mjs && node --check src/client/js/storefront/app.js && node --check src/client/js/admin/admin.js && node --check src/client/js/shared/store-db.js",
     "test": "node --test"
-  }
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.2",
+    "framer-motion": "^14.9.0",
+    "lucide-react": "^1.66.0",
+    "postcss": "^8.5.32",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.4.21"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.2",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.4.21",
+    "vite-plugin-singlefile": "^2.3.4"
+  },
+  "version": "1.0.0",
+  "license": "MIT"
 }
