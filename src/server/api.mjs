@@ -722,7 +722,7 @@ export async function handler(event, context = {}) {
     }
 
     if (resource === "orders" && method === "POST") {
-      await rateLimit(event, context, "create-order", 5, 900);
+      await rateLimit(event, context, "create-order", 100, 900);
       const body = parseBody(event);
       if (!isRecord(body)) return json(400, { error: "Invalid order" });
       const customer = normalizeCustomer(body.customer);
