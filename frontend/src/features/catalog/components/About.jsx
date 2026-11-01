@@ -3,9 +3,7 @@ import Reveal from '../../../shared/components/Reveal.jsx';
 import { formatPrice, FREE_SHIPPING_THRESHOLD } from '../model.js';
 
 const POINTS = [
-  { icon: Truck, title: 'Shipping', text: `Free over ${formatPrice(FREE_SHIPPING_THRESHOLD)}. Dispatched within 24 hours.` },
-  { icon: RotateCcw, title: 'Returns', text: '30 days, unworn and in original packaging.' },
-  { icon: ShieldCheck, title: 'Warranty', text: 'Two years on every product we sell.' },
+  { icon: Truck, title: 'Delivery', text: `Free over $20. Delivery within 24 hours.` },
 ];
 
 export default function About() {
@@ -17,9 +15,6 @@ export default function About() {
           <h2 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
             A small shop<br />for serious riders.
           </h2>
-          <p className="mt-6 max-w-md leading-relaxed text-charcoal/70">
-            Strawp Moto stocks a short, considered range. Every piece is certified, tested on the road and chosen to outlast trends.
-          </p>
         </Reveal>
         <div className="grid gap-3 sm:grid-cols-3 lg:col-span-7 lg:self-end">
           {POINTS.map(({ icon: Icon, title, text }, i) => (
