@@ -37,7 +37,7 @@ function Body({ product, onClose, onAdd, cartQtyFor }) {
       {product.hasVariants && <fieldset className="mt-8"><legend className="eyebrow mb-3">Choose {fields.join(' / ') || 'option'}</legend><div className="flex flex-wrap gap-2">{product.variants.map((item) => {
         const label = fields.map((field) => item[field]).filter(Boolean).join(' / ');
         const selected = item.id === variantId;
-        const selectedStyles = 'border-ink bg-ink text-onsolid shadow-sm dark:border-white dark:bg-white dark:text-neutral-950';
+        const selectedStyles = 'border-2 border-ink bg-ink text-onsolid shadow-sm ring-1 ring-ink/15 dark:border-white dark:bg-white dark:text-neutral-950 dark:ring-white/25';
         const unselectedStyles = 'border-ink/25 text-ink hover:bg-surface/60 dark:border-white/20';
 
         return (

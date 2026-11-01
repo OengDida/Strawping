@@ -47,12 +47,12 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
             })}
           </div>
 
-          <label className="glass relative flex h-[42px] w-48 shrink-0 items-center rounded-full border border-ink/25 px-4 pr-10 transition-colors focus-within:ring-2 focus-within:ring-accent/70 dark:border-white/20 sm:focus-within:ring-0">
+          <label className="glass relative flex h-11 w-48 shrink-0 items-center rounded-full border border-ink/30 px-4 pr-10 shadow-sm transition-colors focus-within:ring-2 focus-within:ring-accent/70 dark:border-white/25 sm:focus-within:ring-0">
             <span className="sr-only">Sort products</span>
             <select
               value={sort}
               onChange={(e) => onSort(e.target.value)}
-              className="focus-ring relative z-10 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent py-2 text-sm font-medium text-ink outline-none"
+              className="focus-ring relative z-10 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent py-2 text-sm font-medium tracking-[-0.01em] text-ink outline-none"
             >
               <option className="bg-paper text-ink" value="featured">Featured</option>
               <option className="bg-paper text-ink" value="low">Price: Low to High</option>

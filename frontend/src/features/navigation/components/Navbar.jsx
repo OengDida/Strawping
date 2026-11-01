@@ -66,7 +66,7 @@ export default function Navbar({ solid, cartCount, onCart, onSearch, theme, onTo
             <li key={l.label}>
               <a
                 href={l.href}
-                className="focus-ring rounded-full px-4 py-2 text-sm text-charcoal/75 transition duration-300 hover:bg-surface/60 hover:text-ink"
+                className="focus-ring rounded-full border border-ink/30 px-4 py-2 text-sm text-charcoal/75 transition duration-300 hover:bg-surface/60 hover:text-ink dark:border-white/25"
               >
                 {l.label}
               </a>
@@ -107,7 +107,7 @@ export default function Navbar({ solid, cartCount, onCart, onSearch, theme, onTo
                 <a
                   href={l.href}
                   onClick={() => setMenuOpen(false)}
-                  className="focus-ring block rounded-xl px-4 py-3 text-[15px] transition hover:bg-surface/60"
+                  className="focus-ring block rounded-xl border border-ink/20 px-4 py-3 text-[15px] transition hover:bg-surface/60 dark:border-white/20"
                 >
                   {l.label}
                 </a>
