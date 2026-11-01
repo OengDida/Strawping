@@ -123,16 +123,64 @@ async function updateServerSyncStatus() {
   text.textContent = online ? "Secure Store API Active" : "API Offline";
 }
 
-function showToast(message, type = "success") {
+function showToast(message, type = "success", action = null) {
   const toast = document.createElement("div");
   toast.className = `admin-toast is-${type}`;
-  toast.setAttribute("role", "status");
-  toast.textContent = message;
+  toast.setAttribute("role", type === "error" ? "alert" : "status");
+  const text = document.createElement("span");
+  text.textContent = message;
+  toast.appendChild(text);
+  if (action) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "admin-toast-action";
+    retry.textContent = action.label;
+    retry.addEventListener("click", () => {
+      toast.remove();
+      action.onClick();
+    });
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "admin-toast-dismiss";
+    dismiss.setAttribute("aria-label", "Dismiss notification");
+    dismiss.textContent = "×";
+    dismiss.addEventListener("click", () => toast.remove());
+    toast.append(retry, dismiss);
+  }
   document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    setTimeout(() => toast.remove(), 500);
-  }, 2500);
+  // Keep actionable error toasts visible until the admin retries or dismisses them.
+  if (!action) {
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      setTimeout(() => toast.remove(), 500);
+    }, 2500);
+  }
+}
+
+function watchOptimisticProductMutation(mutation, successMessage, pendingMessage) {
+  if (!mutation) return;
+  showToast(pendingMessage, "success");
+  mutation.sync.then(() => {
+    renderAdminProducts();
+    void updateServerSyncStatus();
+    showToast(successMessage, "success");
+  }).catch(error => {
+    // StoreDB has already rolled back this mutation without discarding newer edits.
+    renderAdminProducts();
+    void updateServerSyncStatus();
+    showToast(`Could not save product changes: ${error.message}`, "error", {
+      label: "Retry",
+      onClick: () => {
+        const retry = mutation.retry?.();
+        if (!retry) {
+          showToast("This product is no longer available to retry.", "error");
+          return;
+        }
+        renderAdminProducts();
+        watchOptimisticProductMutation(retry, successMessage, "Retrying product sync…");
+      }
+    });
+  });
 }
 
 // ==========================================
@@ -420,17 +468,19 @@ function setupProductManager() {
       productData.image = productData.thumbnail;
 
       saveButton.textContent = "Saving product…";
-      if (id) {
-        await StoreDB.updateProduct(id, productData);
-      } else {
-        await StoreDB.addProduct(productData);
-      }
+      const mutation = id
+        ? StoreDB.updateProductOptimistic(id, productData)
+        : StoreDB.addProductOptimistic(productData);
+      if (!mutation) throw new Error("Product not found.");
 
-        modal.classList.add("hidden");
-        modal.classList.remove("flex");
-        renderAdminProducts();
-        await updateServerSyncStatus();
-        showToast("Changes saved to server automatically.");
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+      renderAdminProducts();
+      watchOptimisticProductMutation(
+        mutation,
+        "Product changes synced to the server.",
+        "Product saved locally; syncing in the background…"
+      );
     } catch (err) {
         alert("Failed to save product: " + err.message);
         console.error(err);
@@ -512,23 +562,30 @@ function editProduct(id) {
   modal.classList.add("flex");
 }
 
-async function deleteProduct(id) {
-  if (confirm("Are you sure you want to delete this product?")) {
-    await StoreDB.deleteProduct(id);
-    renderAdminProducts();
-    await updateServerSyncStatus();
-    showToast("Product removed from server automatically.");
-  }
+function deleteProduct(id, { skipConfirm = false } = {}) {
+  if (!skipConfirm && !confirm("Are you sure you want to delete this product?")) return;
+  const mutation = StoreDB.deleteProductOptimistic(id);
+  if (!mutation) return;
+  renderAdminProducts();
+  watchOptimisticProductMutation(
+    mutation,
+    "Product deletion synced to the server.",
+    "Product removed locally; syncing in the background…"
+  );
 }
 
-async function toggleFeaturedProduct(id) {
+function toggleFeaturedProduct(id) {
   const product = StoreDB.getProducts().find(item => item.id === id);
   if (!product) return;
   const featured = product.featured !== true;
-  await StoreDB.updateProduct(id, { featured });
+  const mutation = StoreDB.updateProductOptimistic(id, { featured });
+  if (!mutation) return;
   renderAdminProducts();
-  await updateServerSyncStatus();
-  showToast(featured ? `${product.name} is featured on the homepage.` : "Homepage featured product cleared.");
+  watchOptimisticProductMutation(
+    mutation,
+    featured ? `${product.name} is featured on the homepage.` : "Homepage featured product cleared.",
+    "Featured-product setting updated locally; syncing…"
+  );
 }
 
 
@@ -967,9 +1024,7 @@ function setupAdminActionDelegation() {
           await toggleFeaturedProduct(id);
           break;
         case "delete-product":
-          if (confirm("Delete this product?")) {
-            await deleteProduct(id);
-          }
+          deleteProduct(id);
           break;
         case "delete-order":
           if (confirm("Delete this order?")) {

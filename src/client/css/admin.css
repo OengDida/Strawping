@@ -231,9 +231,13 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
 .modal-form { padding: 24px; display: grid; gap: 18px; }
 
 /* ---------- Toast ---------- */
-.admin-toast { position: fixed; right: 20px; bottom: 20px; z-index: 70; padding: 12px 20px; color: var(--white); background: var(--ink); box-shadow: 0 20px 25px -5px rgba(0,0,0,.2); font-size: 12px; font-weight: 500; opacity: 1; transition: opacity .5s; }
+.admin-toast { position: fixed; right: 20px; bottom: 20px; z-index: 70; max-width: min(560px, calc(100vw - 40px)); padding: 12px 16px; display: flex; align-items: center; gap: 12px; color: var(--white); background: var(--ink); box-shadow: 0 20px 25px -5px rgba(0,0,0,.2); font-size: 12px; font-weight: 500; opacity: 1; transition: opacity .5s; }
 .admin-toast.is-success { background: var(--moss); }
 .admin-toast.is-error { background: var(--accent); }
+.admin-toast > span { flex: 1; }
+.admin-toast-action, .admin-toast-dismiss { border: 0; color: inherit; background: transparent; font: inherit; cursor: pointer; }
+.admin-toast-action { padding: 6px 10px; border: 1px solid rgba(255,255,255,.65); white-space: nowrap; }
+.admin-toast-dismiss { padding: 2px 4px; font-size: 18px; line-height: 1; }
 
 /* ---------- Responsive ---------- */
 @media (min-width: 640px) {

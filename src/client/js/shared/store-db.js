@@ -10,6 +10,9 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_PRODUCTS = [];
 class StoreDB {
   static SETTINGS_KEY="telegram_store_settings"; static PRODUCTS_KEY="telegram_store_products";
+  // Product catalog writes are serialized because the API persists the full list.
+  static productWriteQueue = Promise.resolve();
+  static productRevision = 0;
   // Sync status exposed to the UI so a failed server sync is visible instead of silent.
   static lastSyncOk=false; static lastSyncError=null; static lastSyncProducts=null; static lastSyncSettings=null;
   static getSyncStatus(){return{ok:!!this.lastSyncOk,error:this.lastSyncError}}
@@ -75,10 +78,123 @@ class StoreDB {
   static async initAdminSync(){await this.syncData(); if(await this.isAuthenticated()) await this.syncOrdersFromServer();}
   static async checkServerStatus(){try{await this.request("status");return true}catch{return false}}
   static getProducts(){try{const x=JSON.parse(localStorage.getItem(this.PRODUCTS_KEY)||"null");return Array.isArray(x)?x:DEFAULT_PRODUCTS}catch{return DEFAULT_PRODUCTS}}
+  static writeProductsLocally(products){
+    localStorage.setItem(this.PRODUCTS_KEY,JSON.stringify(products));
+    this.productRevision++;
+  }
+  static enqueueCurrentProductsWrite(rollback){
+    const request = this.productWriteQueue.then(async () => {
+      // Read at execution time so later optimistic edits are not lost in a queued write.
+      const products = this.getProducts();
+      const revision = this.productRevision;
+      const result = await this.request("products", {
+        method: "PUT",
+        body: JSON.stringify({ products })
+      });
+      // A newer local edit may have happened while the request was in flight.
+      if (revision === this.productRevision && Array.isArray(result.products)) {
+        this.writeProductsLocally(result.products);
+      }
+      return result.products;
+    });
+    const settled = request.catch(error => {
+      rollback?.();
+      throw error;
+    });
+    // Keep later writes running even when this one fails.
+    this.productWriteQueue = settled.catch(() => {});
+    return settled;
+  }
+  static addProductOptimistic(product, id = `prod-${crypto.randomUUID()}`) {
+    const created = { ...product, id, inStock: product.inStock !== false };
+    const current = this.getProducts();
+    const previousFeatured = current.filter(item => item.featured === true);
+    const next = current.map(item => created.featured === true ? { ...item, featured: false } : item);
+    this.writeProductsLocally([created, ...next]);
+    const rollback = () => {
+      const latest = this.getProducts().filter(item => item.id !== id);
+      if (!latest.some(item => item.featured === true)) {
+        for (const oldFeatured of previousFeatured) {
+          const restored = latest.find(item => item.id === oldFeatured.id);
+          if (restored) restored.featured = true;
+        }
+      }
+      this.writeProductsLocally(latest);
+    };
+    return {
+      product: created,
+      sync: this.enqueueCurrentProductsWrite(rollback),
+      retry: () => this.addProductOptimistic(product, id)
+    };
+  }
+  static updateProductOptimistic(id, fields) {
+    const current = this.getProducts();
+    const index = current.findIndex(item => item.id === id);
+    if (index < 0) return null;
+    const before = structuredClone(current);
+    const updated = [...current];
+    if (fields.featured === true) {
+      for (let i = 0; i < updated.length; i++) {
+        if (updated[i].id !== id) updated[i] = { ...updated[i], featured: false };
+      }
+    }
+    updated[index] = { ...updated[index], ...fields };
+    this.writeProductsLocally(updated);
+    const rollback = () => {
+      const latest = this.getProducts();
+      const target = latest.find(item => item.id === id);
+      const original = before.find(item => item.id === id);
+      if (target && original) {
+        for (const [key, optimisticValue] of Object.entries(fields)) {
+          if (JSON.stringify(target[key]) !== JSON.stringify(optimisticValue)) continue;
+          if (Object.hasOwn(original, key)) target[key] = original[key];
+          else delete target[key];
+        }
+      }
+      if (fields.featured === true && !latest.some(item => item.featured === true)) {
+        for (const oldProduct of before.filter(item => item.featured === true && item.id !== id)) {
+          const restored = latest.find(item => item.id === oldProduct.id);
+          if (restored) restored.featured = true;
+        }
+      }
+      this.writeProductsLocally(latest);
+    };
+    return {
+      product: updated[index],
+      sync: this.enqueueCurrentProductsWrite(rollback),
+      retry: () => this.updateProductOptimistic(id, fields)
+    };
+  }
+  static deleteProductOptimistic(id) {
+    const current = this.getProducts();
+    const index = current.findIndex(item => item.id === id);
+    if (index < 0) return null;
+    const [deleted] = current.splice(index, 1);
+    this.writeProductsLocally(current);
+    const rollback = () => {
+      const latest = this.getProducts();
+      if (!latest.some(item => item.id === id)) {
+        const restored = { ...deleted };
+        // Preserve a later feature selection made while this delete was pending.
+        if (restored.featured && latest.some(item => item.featured === true)) {
+          restored.featured = false;
+        }
+        latest.splice(Math.min(index, latest.length), 0, restored);
+        this.writeProductsLocally(latest);
+      }
+    };
+    return {
+      product: deleted,
+      sync: this.enqueueCurrentProductsWrite(rollback),
+      retry: () => this.deleteProductOptimistic(id)
+    };
+  }
   static async saveProducts(products){
     if(!Array.isArray(products)||products.length>500) throw new Error("Invalid product list");
-    const r=await this.request("products",{method:"PUT",body:JSON.stringify({products})});
-    localStorage.setItem(this.PRODUCTS_KEY,JSON.stringify(r.products)); return r.products;
+    const before = this.getProducts();
+    this.writeProductsLocally(products);
+    const result = await this.enqueueCurrentProductsWrite(() => this.writeProductsLocally(before));
+    return result;
   }
   static async updateInventory(productId, variantId, changes){
     const payload={productId,variantId:variantId||null,...changes};
@@ -89,9 +205,9 @@ class StoreDB {
     if(typeof result.url!=="string"||!result.url) throw new Error("Image upload did not return a URL.");
     return result.url;
   }
-  static async addProduct(product){const p={...product,id:"prod-"+crypto.randomUUID(),inStock:product.inStock!==false};const existing=this.getProducts().map(item=>p.featured===true?{...item,featured:false}:item);const list=[p,...existing];await this.saveProducts(list);return p}
-  static async updateProduct(id,fields){const list=this.getProducts();const i=list.findIndex(p=>p.id===id);if(i<0)return null;if(fields.featured===true)list.forEach((product,index)=>{if(product.id!==id)list[index]={...product,featured:false}});list[i]={...list[i],...fields};await this.saveProducts(list);return list[i]}
-  static async deleteProduct(id){await this.saveProducts(this.getProducts().filter(p=>p.id!==id));return true}
+  static async addProduct(product){const mutation=this.addProductOptimistic(product);await mutation.sync;return mutation.product}
+  static async updateProduct(id,fields){const mutation=this.updateProductOptimistic(id,fields);if(!mutation)return null;await mutation.sync;return mutation.product}
+  static async deleteProduct(id){const mutation=this.deleteProductOptimistic(id);if(!mutation)return false;await mutation.sync;return true}
   static async getOrders(){try{const r=await this.request("orders");return Array.isArray(r.orders)?r.orders:[]}catch{return []}}
   static async syncOrdersFromServer(){try{const r=await this.request("orders");return r.orders||[]}catch(e){console.warn(e.message);return []}}
   static async addOrder(orderData){const r=await this.request("orders",{method:"POST",body:JSON.stringify(orderData)});return r}
