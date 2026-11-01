@@ -20,10 +20,10 @@ function cartReducer(state, action) {
       const key = `${action.id}::${action.variantId || 'base'}`;
       const found = state.find((item) => item.key === key);
       return found
-        ? state.map((item) => item.key === key ? { ...item, qty: Math.min(99, item.qty + action.qty) } : item)
-        : [...state, { key, id: action.id, variantId: action.variantId || null, qty: action.qty }];
+        ? state.map((item) => item.key === key ? { ...item, qty: Math.min(action.maxQty ?? 99, item.qty + action.qty) } : item)
+        : [...state, { key, id: action.id, variantId: action.variantId || null, qty: Math.min(action.maxQty ?? 99, action.qty) }];
     }
-    case 'qty': return state.map((item) => item.key === action.key ? { ...item, qty: Math.max(1, Math.min(99, action.qty)) } : item);
+    case 'qty': return state.map((item) => item.key === action.key ? { ...item, qty: Math.max(1, Math.min(action.maxQty ?? 99, action.qty)) } : item);
     case 'remove': return state.filter((item) => item.key !== action.key);
     case 'clear': return [];
     default: return state;
@@ -83,14 +83,19 @@ export default function App() {
   const cartCount = cart.reduce((total, item) => total + item.qty, 0);
   const addToCart = useCallback((product, variant, qty = 1) => {
     if (product.hasVariants && !variant) { setQuickView(product); return; }
-    dispatch({ type: 'add', id: product.id, variantId: variant?.id || null, qty });
-    setToast({ id: Date.now(), product, size: variant ? [variant.size, variant.color, variant.type].filter(Boolean).join(' / ') : '', qty });
-  }, []);
+    const maxQty = Math.max(0, Number(variant ? variant.stock : product.stock) || 0);
+    const key = `${product.id}::${variant?.id || 'base'}`;
+    const alreadyInBag = cart.find((line) => line.key === key)?.qty || 0;
+    if (maxQty <= alreadyInBag) { setToast({ id: Date.now(), message: `Only ${maxQty} available. Your bag already contains the available stock.` }); return; }
+    const acceptedQty = Math.min(qty, maxQty - alreadyInBag);
+    dispatch({ type: 'add', id: product.id, variantId: variant?.id || null, qty: acceptedQty, maxQty });
+    setToast({ id: Date.now(), product, size: variant ? [variant.size, variant.color, variant.type].filter(Boolean).join(' / ') : '', qty: acceptedQty });
+  }, [cart]);
   const scrollToShop = useCallback(() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), []);
   const cartLines = cart.map((item) => {
     const product = products.find((p) => p.id === item.id);
     const variant = product?.variants?.find((v) => v.id === item.variantId);
-    return product ? { ...item, product, variant, unitPrice: variantPrice(product, variant) } : null;
+    return product ? { ...item, product, variant, maxQty: Math.max(0, Number(variant ? variant.stock : product.stock) || 0), qty: Math.min(item.qty, Math.max(0, Number(variant ? variant.stock : product.stock) || 0)), unitPrice: variantPrice(product, variant) } : null;
   }).filter(Boolean);
 
   return <div className="min-h-screen overflow-x-clip">
