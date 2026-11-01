@@ -19,8 +19,9 @@ class StoreDB {
   static orderRevision = 0;
   static orderMutationVersions = new Map();
   static bumpOrderMutationVersion(orderId){
-    const next = (this.orderMutationVersions.get(orderId) || 0) + 1;
-    this.orderMutationVersions.set(orderId, next);
+    const key = String(orderId);
+    const next = (this.orderMutationVersions.get(key) || 0) + 1;
+    this.orderMutationVersions.set(key, next);
     return next;
   }
   // Sync status exposed to the UI so a failed server sync is visible instead of silent.
@@ -240,16 +241,16 @@ class StoreDB {
   }
   static async addOrder(orderData){const r=await this.request("orders",{method:"POST",body:JSON.stringify(orderData)});return r}
   static updateOrderStatusOptimistic(orderId,status){
-    const index = this.adminOrders.findIndex(order => order.id === orderId);
+    const index = this.adminOrders.findIndex(order => String(order.id) === String(orderId));
     if(index < 0) return null;
     const previousStatus = this.adminOrders[index].status;
-    this.adminOrders = this.adminOrders.map(order => order.id === orderId ? { ...order, status } : order);
+    this.adminOrders = this.adminOrders.map(order => String(order.id) === String(orderId) ? { ...order, status } : order);
     this.orderRevision++;
     const mutationVersion = this.bumpOrderMutationVersion(orderId);
     const rollback = () => {
-      if(this.orderMutationVersions.get(orderId) === mutationVersion) {
+      if(this.orderMutationVersions.get(String(orderId)) === mutationVersion) {
         this.adminOrders = this.adminOrders.map(order =>
-          order.id === orderId ? { ...order, status: previousStatus } : order
+          String(order.id) === String(orderId) ? { ...order, status: previousStatus } : order
         );
         this.orderRevision++;
         this.bumpOrderMutationVersion(orderId);
@@ -275,13 +276,13 @@ class StoreDB {
     return mutation.order;
   }
   static deleteOrderOptimistic(orderId){
-    const index = this.adminOrders.findIndex(order => order.id === orderId);
+    const index = this.adminOrders.findIndex(order => String(order.id) === String(orderId));
     if(index < 0) return null;
     const [deleted] = this.adminOrders.splice(index, 1);
     this.orderRevision++;
     const mutationVersion = this.bumpOrderMutationVersion(orderId);
     const rollback = () => {
-      if(this.orderMutationVersions.get(orderId) === mutationVersion && !this.adminOrders.some(order => order.id === orderId)) {
+      if(this.orderMutationVersions.get(String(orderId)) === mutationVersion && !this.adminOrders.some(order => String(order.id) === String(orderId))) {
         this.adminOrders.splice(Math.min(index, this.adminOrders.length), 0, deleted);
         this.orderRevision++;
         this.bumpOrderMutationVersion(orderId);
