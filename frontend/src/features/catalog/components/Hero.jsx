@@ -29,7 +29,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
       <div className="relative mx-auto grid min-h-[100svh] max-w-7xl items-center gap-14 px-5 pb-16 pt-28 lg:grid-cols-12 lg:gap-10">
         <div className="lg:col-span-7">
           <motion.p {...fadeUp(0)} className="eyebrow mb-8 flex items-center gap-3">
-            <span className="h-px w-8 bg-accent" /> Riding equipment — AW26
+            <span className="h-px w-8 bg-accent" /> Made by riders,
           </motion.p>
 
           <h1 className="text-[clamp(3.25rem,9.5vw,8.5rem)] font-semibold leading-[0.9] tracking-tightest">
