@@ -1,7 +1,126 @@
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import Reveal from '../../../shared/components/Reveal.jsx';
 import { spring } from '../../../shared/motion.js';
+
+const SORT_OPTIONS = [
+  { value: 'featured', label: 'Featured' },
+  { value: 'low', label: 'Price: Low to High' },
+  { value: 'high', label: 'Price: High to Low' },
+];
+
+function SortDropdown({ sort, onSort }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const optionRefs = useRef([]);
+  const selectedIndex = Math.max(0, SORT_OPTIONS.findIndex((option) => option.value === sort));
+  const selectedOption = SORT_OPTIONS[selectedIndex];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) optionRefs.current[selectedIndex]?.focus();
+  }, [open, selectedIndex]);
+
+  const choose = (option) => {
+    onSort(option.value);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const handleMenuKeyDown = (event) => {
+    const currentIndex = optionRefs.current.indexOf(document.activeElement);
+    let nextIndex = currentIndex;
+
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % SORT_OPTIONS.length;
+    else if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + SORT_OPTIONS.length) % SORT_OPTIONS.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = SORT_OPTIONS.length - 1;
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+      return;
+    } else if (event.key === 'Tab') {
+      setOpen(false);
+      return;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    optionRefs.current[nextIndex]?.focus();
+  };
+
+  return (
+    <div ref={rootRef} className="relative z-40 w-48 shrink-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={`Sort products. Current sort: ${selectedOption.label}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="sort-products-menu"
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="glass focus-ring flex h-11 w-full items-center justify-between rounded-full border border-ink/30 px-4 text-left text-sm font-medium tracking-[-0.01em] text-ink shadow-sm transition-colors hover:bg-surface/60 dark:border-white/25"
+      >
+        <span>{selectedOption.label}</span>
+        <ChevronDown
+          aria-hidden="true"
+          className={`h-4 w-4 shrink-0 text-mute transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div
+          id="sort-products-menu"
+          role="menu"
+          aria-label="Sort products"
+          onKeyDown={handleMenuKeyDown}
+          className="glass-panel absolute right-0 top-full z-50 mt-2 w-full overflow-hidden rounded-2xl p-1.5"
+        >
+          {SORT_OPTIONS.map((option, index) => {
+            const selected = option.value === sort;
+            return (
+              <button
+                key={option.value}
+                ref={(element) => { optionRefs.current[index] = element; }}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                tabIndex={-1}
+                onClick={() => choose(option)}
+                className={`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70 flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                  selected
+                    ? 'bg-ink/[0.08] font-semibold text-ink dark:bg-white/[0.12]'
+                    : 'text-charcoal/80 hover:bg-ink/[0.06] hover:text-ink dark:text-charcoal dark:hover:bg-white/[0.08]'
+                }`}
+              >
+                <span>{option.label}</span>
+                {selected && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-accent" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Returns siblings so the pill bar can stay sticky for the whole shop section. */
 export default function FilterBar({ categories, active, onChange, counts, sort, onSort, shown }) {
@@ -47,19 +166,7 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
             })}
           </div>
 
-          <label className="glass relative flex h-11 w-48 shrink-0 items-center rounded-full border border-ink/30 px-4 pr-10 shadow-sm transition-colors focus-within:ring-2 focus-within:ring-accent/70 dark:border-white/25 sm:focus-within:ring-0">
-            <span className="sr-only">Sort products</span>
-            <select
-              value={sort}
-              onChange={(e) => onSort(e.target.value)}
-              className="focus-ring relative z-10 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent py-2 text-sm font-medium tracking-[-0.01em] text-ink outline-none"
-            >
-              <option className="bg-paper text-ink" value="featured">Featured</option>
-              <option className="bg-paper text-ink" value="low">Price: Low to High</option>
-              <option className="bg-paper text-ink" value="high">Price: High to Low</option>
-            </select>
-            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 h-4 w-4 text-mute" />
-          </label>
+          <SortDropdown sort={sort} onSort={onSort} />
         </div>
       </div>
     </>
