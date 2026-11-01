@@ -33,7 +33,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
           </motion.p>
 
           <h1 className="text-[clamp(3.25rem,9.5vw,8.5rem)] font-semibold leading-[0.9] tracking-tightest">
-            {['Engineering', 'the Ride'].map((t, i) => (
+            {['Strawp', 'Moto'].map((t, i) => (
               <span key={t} className="block overflow-hidden pb-[0.08em]">
                 <motion.span className="block" variants={line} initial="hidden" animate="show" custom={i}>
                   {t}
