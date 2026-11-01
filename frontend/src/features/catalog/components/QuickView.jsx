@@ -5,18 +5,25 @@ import Stepper from '../../../shared/components/Stepper.jsx';
 import { useEscape } from '../../../shared/hooks/index.js';
 import { defaultVariant, formatPrice, variantPrice } from '../model.js';
 
-function Body({ product, onClose, onAdd }) {
+function Body({ product, onClose, onAdd, cartQtyFor }) {
   const [imageIndex, setImageIndex] = useState(0);
   const [variantId, setVariantId] = useState(defaultVariant(product)?.id || '');
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const images = product.images?.length ? product.images : [product.image].filter(Boolean);
   const variant = product.variants?.find((item) => item.id === variantId) || null;
+  const stock = Math.max(0, Number(variant ? variant.stock : product.stock) || 0);
+  const remaining = Math.max(0, stock - cartQtyFor(product, variant?.id || null));
   const unavailable = product.hasVariants
-    ? (!variant || variant.inStock === false || variant.stock < qty)
-    : (product.inStock === false || product.stock < qty);
+    ? (!variant || variant.inStock === false || remaining < qty)
+    : (product.inStock === false || remaining < qty);
   const fields = product.variantFields || [];
-  const add = () => { if (unavailable || !product.inStock) return; onAdd(product, variant, qty); setAdded(true); setTimeout(() => setAdded(false), 1500); };
+  const add = () => {
+    if (unavailable || !product.inStock) return;
+    if (onAdd(product, variant, qty) === false) return;
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
   return <div className="relative grid md:grid-cols-2" onClick={(event) => event.stopPropagation()}>
     <button type="button" onClick={onClose} aria-label="Close product details" className="glass focus-ring absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full"><X className="h-4 w-4" /></button>
     <div className="relative bg-stone md:min-h-[600px]">
@@ -28,11 +35,11 @@ function Body({ product, onClose, onAdd }) {
       <p className="mt-6 text-2xl tabular-nums">{formatPrice(variantPrice(product, variant))}</p>
       <p className="mt-6 whitespace-pre-line leading-relaxed text-charcoal/75">{product.description || 'Contact us for more product details.'}</p>
       {product.hasVariants && <fieldset className="mt-8"><legend className="eyebrow mb-3">Choose {fields.join(' / ') || 'option'}</legend><div className="flex flex-wrap gap-2">{product.variants.map((item) => { const label = fields.map((field) => item[field]).filter(Boolean).join(' / '); const selected = item.id === variantId; return <button key={item.id} type="button" disabled={item.inStock === false || item.stock < 1} aria-pressed={selected} onClick={() => setVariantId(item.id)} className={`focus-ring rounded-full border px-4 py-2 text-sm ${selected ? 'border-ink bg-ink text-white' : 'border-ink/15'} disabled:cursor-not-allowed disabled:opacity-35`}>{label} {item.inStock === false || item.stock < 1 ? '(Sold out)' : ''}</button>; })}</div>{variant && <p className="mt-2 text-xs text-mute">{variant.stock} in stock</p>}</fieldset>}
-      <div className="mt-8 flex items-center gap-3"><Stepper value={qty} max={Math.max(1, Number(variant ? variant.stock : product.stock) || 0)} onChange={setQty} /><motion.button type="button" whileTap={{ scale: .97 }} onClick={add} disabled={unavailable || !product.inStock} className="glass-dark focus-ring flex h-12 min-w-0 flex-1 items-center justify-center rounded-full px-4 text-sm font-medium disabled:opacity-40">{added ? <><Check className="mr-2 h-4 w-4" /> Added to bag</> : unavailable || !product.inStock ? 'Sold out' : `Add to bag · ${formatPrice(variantPrice(product, variant) * qty)}`}</motion.button></div>
+      <div className="mt-8 flex items-center gap-3"><Stepper value={qty} max={Math.max(1, remaining)} onChange={setQty} /><motion.button type="button" whileTap={{ scale: .97 }} onClick={add} disabled={unavailable || !product.inStock} className="glass-dark focus-ring flex h-12 min-w-0 flex-1 items-center justify-center rounded-full px-4 text-sm font-medium disabled:opacity-40">{added ? <><Check className="mr-2 h-4 w-4" /> Added to bag</> : remaining === 0 ? 'Max in bag' : unavailable || !product.inStock ? 'Quantity unavailable' : `Add to bag · ${formatPrice(variantPrice(product, variant) * qty)}`}</motion.button></div>
     </div>
   </div>;
 }
-export default function QuickView({ product, onClose, onAdd }) {
+export default function QuickView({ product, onClose, onAdd, cartQtyFor }) {
   useEscape(Boolean(product), onClose);
-  return <AnimatePresence>{product && <motion.div key="quickview" className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.button aria-label="Close product details" onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-md" /><motion.div role="dialog" aria-modal="true" aria-labelledby="qv-title" initial={{ opacity: 0, y: 48, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 30 }} transition={{ type: 'spring', stiffness: 300, damping: 32 }} className="glass-panel no-scrollbar relative max-h-[92svh] w-full max-w-5xl overflow-y-auto rounded-t-[2rem] sm:rounded-[2rem]"><Body key={product.id} product={product} onClose={onClose} onAdd={onAdd} /></motion.div></motion.div>}</AnimatePresence>;
+  return <AnimatePresence>{product && <motion.div key="quickview" className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><motion.button aria-label="Close product details" onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-md" /><motion.div role="dialog" aria-modal="true" aria-labelledby="qv-title" initial={{ opacity: 0, y: 48, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 30 }} transition={{ type: 'spring', stiffness: 300, damping: 32 }} className="glass-panel no-scrollbar relative max-h-[92svh] w-full max-w-5xl overflow-y-auto rounded-t-[2rem] sm:rounded-[2rem]"><Body key={product.id} product={product} onClose={onClose} onAdd={onAdd} cartQtyFor={cartQtyFor} /></motion.div></motion.div>}</AnimatePresence>;
 }

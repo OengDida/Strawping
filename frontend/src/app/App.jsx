@@ -19,9 +19,15 @@ function cartReducer(state, action) {
     case 'add': {
       const key = `${action.id}::${action.variantId || 'base'}`;
       const found = state.find((item) => item.key === key);
+      const maxQty = Math.max(0, Number(action.maxQty) || 0);
+      const qty = Number(action.qty);
+      const nextQty = (found?.qty || 0) + qty;
+      // Keep the invariant in the reducer too, in case an event fires twice
+      // before the UI has re-rendered with the latest cart.
+      if (!Number.isInteger(qty) || qty < 1 || nextQty > maxQty) return state;
       return found
-        ? state.map((item) => item.key === key ? { ...item, qty: Math.min(action.maxQty ?? 99, item.qty + action.qty) } : item)
-        : [...state, { key, id: action.id, variantId: action.variantId || null, qty: Math.min(action.maxQty ?? 99, action.qty) }];
+        ? state.map((item) => item.key === key ? { ...item, qty: nextQty } : item)
+        : [...state, { key, id: action.id, variantId: action.variantId || null, qty }];
     }
     case 'qty': return state.map((item) => item.key === action.key ? { ...item, qty: Math.max(1, Math.min(action.maxQty ?? 99, action.qty)) } : item);
     case 'remove': return state.filter((item) => item.key !== action.key);
@@ -81,16 +87,49 @@ export default function App() {
     return list;
   }, [products, category, sort]);
   const cartCount = cart.reduce((total, item) => total + item.qty, 0);
+  const cartQtyFor = useCallback((product, variantId = null) => (
+    cart.find((line) => line.id === product.id && (line.variantId || null) === (variantId || null))?.qty || 0
+  ), [cart]);
+  const canAddToBag = useCallback((product) => {
+    if (!product.inStock) return false;
+    if (product.hasVariants) {
+      return product.variants.some((variant) => (
+        variant.inStock !== false && Number(variant.stock) > cartQtyFor(product, variant.id)
+      ));
+    }
+    return Number(product.stock) > cartQtyFor(product);
+  }, [cartQtyFor]);
   const addToCart = useCallback((product, variant, qty = 1) => {
     if (product.hasVariants && !variant) { setQuickView(product); return; }
-    const maxQty = Math.max(0, Number(variant ? variant.stock : product.stock) || 0);
-    const key = `${product.id}::${variant?.id || 'base'}`;
-    const alreadyInBag = cart.find((line) => line.key === key)?.qty || 0;
-    if (maxQty <= alreadyInBag) { setToast({ id: Date.now(), message: `Only ${maxQty} available. Your bag already contains the available stock.` }); return; }
-    const acceptedQty = Math.min(qty, maxQty - alreadyInBag);
-    dispatch({ type: 'add', id: product.id, variantId: variant?.id || null, qty: acceptedQty, maxQty });
-    setToast({ id: Date.now(), product, size: variant ? [variant.size, variant.color, variant.type].filter(Boolean).join(' / ') : '', qty: acceptedQty });
-  }, [cart]);
+    try {
+      const requestedQty = Number(qty);
+      const maxQty = Math.max(0, Number(variant ? variant.stock : product.stock) || 0);
+      const alreadyInBag = cartQtyFor(product, variant?.id || null);
+      const remaining = Math.max(0, maxQty - alreadyInBag);
+      if (!Number.isInteger(requestedQty) || requestedQty < 1 || requestedQty > remaining) {
+        setToast({
+          id: Date.now(),
+          type: 'error',
+          message: remaining > 0
+            ? `Only ${remaining} more available. Please adjust the quantity.`
+            : `All ${maxQty} available are already in your bag.`,
+        });
+        return false;
+      }
+      dispatch({ type: 'add', id: product.id, variantId: variant?.id || null, qty: requestedQty, maxQty });
+      setToast({
+        id: Date.now(),
+        type: 'success',
+        product,
+        size: variant ? [variant.size, variant.color, variant.type].filter(Boolean).join(' / ') : '',
+        qty: requestedQty,
+      });
+      return true;
+    } catch {
+      setToast({ id: Date.now(), type: 'error', message: 'Could not add this item. Please try again.' });
+      return false;
+    }
+  }, [cartQtyFor]);
   const scrollToShop = useCallback(() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), []);
   const cartLines = cart.map((item) => {
     const product = products.find((p) => p.id === item.id);
@@ -105,16 +144,16 @@ export default function App() {
       <Hero ref={heroRef} onExplore={scrollToShop} featured={products[0]} onFeatured={() => products[0] && setQuickView(products[0])} />
       <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
         <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
-        <ProductGrid products={visible} onQuickView={setQuickView} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
+        <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
         {products.length === 0 && <p className="py-16 text-center text-sm text-mute">No products are available yet. Add products through the existing admin panel.</p>}
       </section>
       <About />
     </main>
     <Footer />
-    <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} />
+    <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} />
     <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} />
     <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} />
-    <Toast toast={cartOpen || quickView ? null : toast} onDismiss={() => setToast(null)} onView={() => { setToast(null); setCartOpen(true); }} />
+    <Toast toast={toast} onDismiss={() => setToast(null)} onView={() => { setToast(null); setCartOpen(true); }} />
     <BackToTop visible={pastHero && !cartOpen} />
   </div>;
 }
