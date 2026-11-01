@@ -57,11 +57,11 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
             type="button"
             whileTap={{ scale: 0.92 }}
             onClick={() => { if (addEnabled) onAdd(product); }}
-            aria-label={addEnabled ? `Add ${product.name} to bag` : product.inStock ? `Maximum quantity of ${product.name} is already in your bag` : `${product.name} sold out`}
+            aria-label={addEnabled ? `Add ${product.name} to bag` : `${product.name} out of stock`}
             disabled={!addEnabled}
             className="glass-dark focus-ring flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Plus className="h-4 w-4" /> {addEnabled ? 'Add' : product.inStock ? 'Max' : 'Sold out'}
+            <Plus className="h-4 w-4" /> {addEnabled ? 'Add' : 'Out of stock'}
           </motion.button>
         </div>
       </div>
