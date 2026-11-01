@@ -13,6 +13,16 @@ class StoreDB {
   // Product catalog writes are serialized because the API persists the full list.
   static productWriteQueue = Promise.resolve();
   static productRevision = 0;
+  // Keep admin orders in memory only: order records contain customer PII.
+  static adminOrders = [];
+  static ordersLoaded = false;
+  static orderRevision = 0;
+  static orderMutationVersions = new Map();
+  static bumpOrderMutationVersion(orderId){
+    const next = (this.orderMutationVersions.get(orderId) || 0) + 1;
+    this.orderMutationVersions.set(orderId, next);
+    return next;
+  }
   // Sync status exposed to the UI so a failed server sync is visible instead of silent.
   static lastSyncOk=false; static lastSyncError=null; static lastSyncProducts=null; static lastSyncSettings=null;
   static getSyncStatus(){return{ok:!!this.lastSyncOk,error:this.lastSyncError}}
@@ -208,11 +218,88 @@ class StoreDB {
   static async addProduct(product){const mutation=this.addProductOptimistic(product);await mutation.sync;return mutation.product}
   static async updateProduct(id,fields){const mutation=this.updateProductOptimistic(id,fields);if(!mutation)return null;await mutation.sync;return mutation.product}
   static async deleteProduct(id){const mutation=this.deleteProductOptimistic(id);if(!mutation)return false;await mutation.sync;return true}
-  static async getOrders(){try{const r=await this.request("orders");return Array.isArray(r.orders)?r.orders:[]}catch{return []}}
-  static async syncOrdersFromServer(){try{const r=await this.request("orders");return r.orders||[]}catch(e){console.warn(e.message);return []}}
+  static getCachedOrders(){return this.adminOrders}
+  static async getOrders(){
+    if(this.ordersLoaded) return this.adminOrders;
+    return this.syncOrdersFromServer();
+  }
+  static async syncOrdersFromServer(){
+    const revision = this.orderRevision;
+    try {
+      const result = await this.request("orders");
+      if(Array.isArray(result.orders) && revision === this.orderRevision) {
+        this.adminOrders = result.orders;
+        this.ordersLoaded = true;
+        this.orderRevision++;
+      }
+      return this.adminOrders;
+    } catch(error) {
+      console.warn(error.message);
+      return this.adminOrders;
+    }
+  }
   static async addOrder(orderData){const r=await this.request("orders",{method:"POST",body:JSON.stringify(orderData)});return r}
-  static async updateOrderStatus(orderId,status){const r=await this.request(`orders/${encodeURIComponent(orderId)}`,{method:"PATCH",body:JSON.stringify({status})});return r.order}
-  static async deleteOrder(orderId){await this.request(`orders/${encodeURIComponent(orderId)}`,{method:"DELETE"});return true}
+  static updateOrderStatusOptimistic(orderId,status){
+    const index = this.adminOrders.findIndex(order => order.id === orderId);
+    if(index < 0) return null;
+    const previousStatus = this.adminOrders[index].status;
+    this.adminOrders = this.adminOrders.map(order => order.id === orderId ? { ...order, status } : order);
+    this.orderRevision++;
+    const mutationVersion = this.bumpOrderMutationVersion(orderId);
+    const rollback = () => {
+      if(this.orderMutationVersions.get(orderId) === mutationVersion) {
+        this.adminOrders = this.adminOrders.map(order =>
+          order.id === orderId ? { ...order, status: previousStatus } : order
+        );
+        this.orderRevision++;
+        this.bumpOrderMutationVersion(orderId);
+      }
+    };
+    const sync = this.request(`orders/${encodeURIComponent(orderId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    }).catch(error => {
+      rollback();
+      throw error;
+    });
+    return {
+      order: this.adminOrders[index],
+      sync,
+      retry: () => this.updateOrderStatusOptimistic(orderId, status)
+    };
+  }
+  static async updateOrderStatus(orderId,status){
+    const mutation=this.updateOrderStatusOptimistic(orderId,status);
+    if(!mutation) return null;
+    await mutation.sync;
+    return mutation.order;
+  }
+  static deleteOrderOptimistic(orderId){
+    const index = this.adminOrders.findIndex(order => order.id === orderId);
+    if(index < 0) return null;
+    const [deleted] = this.adminOrders.splice(index, 1);
+    this.orderRevision++;
+    const mutationVersion = this.bumpOrderMutationVersion(orderId);
+    const rollback = () => {
+      if(this.orderMutationVersions.get(orderId) === mutationVersion && !this.adminOrders.some(order => order.id === orderId)) {
+        this.adminOrders.splice(Math.min(index, this.adminOrders.length), 0, deleted);
+        this.orderRevision++;
+        this.bumpOrderMutationVersion(orderId);
+      }
+    };
+    const sync = this.request(`orders/${encodeURIComponent(orderId)}`, {
+      method: "DELETE"
+    }).catch(error => {
+      rollback();
+      throw error;
+    });
+    return {
+      order: deleted,
+      sync,
+      retry: () => this.deleteOrderOptimistic(orderId)
+    };
+  }
+  static async deleteOrder(orderId){const mutation=this.deleteOrderOptimistic(orderId);if(!mutation)return false;await mutation.sync;return true}
   static async isAuthenticated(){
     try {
       const session=await this.request("auth/session");

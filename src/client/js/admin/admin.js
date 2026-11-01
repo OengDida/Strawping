@@ -106,7 +106,6 @@ function setupTabs() {
 }
 
 async function loadAllAdminData() {
-  await StoreDB.syncOrdersFromServer();
   await StoreDB.initAdminSync();
   await renderAdminProducts();
   await renderAdminOrders();
@@ -178,6 +177,32 @@ function watchOptimisticProductMutation(mutation, successMessage, pendingMessage
         }
         renderAdminProducts();
         watchOptimisticProductMutation(retry, successMessage, "Retrying product sync…");
+      }
+    });
+  });
+}
+
+function watchOptimisticOrderMutation(mutation, successMessage, pendingMessage) {
+  if (!mutation) return;
+  showToast(pendingMessage, "success");
+  mutation.sync.then(() => {
+    renderAdminOrders();
+    void updateServerSyncStatus();
+    showToast(successMessage, "success");
+  }).catch(error => {
+    // StoreDB has already rolled back only this order mutation.
+    renderAdminOrders();
+    void updateServerSyncStatus();
+    showToast(`Could not save order changes: ${error.message}`, "error", {
+      label: "Retry",
+      onClick: () => {
+        const retry = mutation.retry?.();
+        if (!retry) {
+          showToast("This order is no longer available to retry.", "error");
+          return;
+        }
+        renderAdminOrders();
+        watchOptimisticOrderMutation(retry, successMessage, "Retrying order sync…");
       }
     });
   });
@@ -775,8 +800,8 @@ function setupStockManager() {
 // ==========================================
 // ORDERS MANAGER
 // ==========================================
-async function renderAdminOrders() {
-  const orders = await StoreDB.getOrders();
+function renderAdminOrders() {
+  const orders = StoreDB.getCachedOrders();
   const settings = StoreDB.getSettings();
   const currency = settings.currency || "$";
   const container = document.getElementById("orders-list-container");
@@ -882,16 +907,27 @@ async function renderAdminOrders() {
   }).join("");
 }
 
-async function changeOrderStatus(orderId, status) {
-  await StoreDB.updateOrderStatus(orderId, status);
-  await renderAdminOrders();
+function changeOrderStatus(orderId, status) {
+  const mutation = StoreDB.updateOrderStatusOptimistic(orderId, status);
+  if (!mutation) return;
+  renderAdminOrders();
+  watchOptimisticOrderMutation(
+    mutation,
+    "Order status synced to the server.",
+    "Order status updated locally; syncing…"
+  );
 }
 
-async function deleteOrder(orderId) {
-  if (confirm("Delete this order record?")) {
-    await StoreDB.deleteOrder(orderId);
-    await renderAdminOrders();
-  }
+function deleteOrder(orderId, { skipConfirm = false } = {}) {
+  if (!skipConfirm && !confirm("Delete this order record?")) return;
+  const mutation = StoreDB.deleteOrderOptimistic(orderId);
+  if (!mutation) return;
+  renderAdminOrders();
+  watchOptimisticOrderMutation(
+    mutation,
+    "Order deletion synced to the server.",
+    "Order removed locally; syncing in the background…"
+  );
 }
 
 // ==========================================
@@ -1027,9 +1063,7 @@ function setupAdminActionDelegation() {
           deleteProduct(id);
           break;
         case "delete-order":
-          if (confirm("Delete this order?")) {
-            await deleteOrder(id);
-          }
+          deleteOrder(id);
           break;
       }
     } catch (err) {
