@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { ChevronDown, ArrowUpDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import Reveal from '../../../shared/components/Reveal.jsx';
 import { spring } from '../../../shared/motion.js';
 
@@ -22,7 +22,7 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
           <div
             role="tablist"
             aria-label="Filter by category"
-            className="glass no-scrollbar flex min-w-0 gap-1 overflow-x-auto rounded-full border border-black/20 p-1 dark:border-white/15"
+            className="glass no-scrollbar flex min-w-0 gap-1 overflow-x-auto rounded-full border border-ink/30 p-1 dark:border-white/20"
           >
             {categories.map((c) => {
               const on = c === active;
@@ -33,7 +33,7 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
                   role="tab"
                   aria-selected={on}
                   onClick={() => onChange(c)}
-                  className={`focus-ring relative shrink-0 rounded-full border border-black/15 px-4 py-2 text-sm transition-colors duration-300 dark:border-white/15 ${
+                  className={`focus-ring relative shrink-0 rounded-full border border-ink/25 px-4 py-2 text-sm transition-colors duration-300 dark:border-white/20 ${
                     on ? 'text-onsolid' : 'text-charcoal/70 hover:bg-surface/50 hover:text-ink'
                   }`}
                 >
@@ -47,19 +47,18 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
             })}
           </div>
 
-          <label className="glass relative grid h-[42px] w-[42px] shrink-0 place-items-center rounded-full border border-black/20 focus-within:ring-2 focus-within:ring-accent/70 dark:border-white/15 sm:flex sm:h-[42px] sm:w-auto sm:items-center sm:focus-within:ring-0">
+          <label className="glass relative flex h-[42px] w-48 shrink-0 items-center rounded-full border border-ink/25 px-4 pr-10 transition-colors focus-within:ring-2 focus-within:ring-accent/70 dark:border-white/20 sm:focus-within:ring-0">
             <span className="sr-only">Sort products</span>
-            <ArrowUpDown className="pointer-events-none h-4 w-4 sm:hidden" strokeWidth={1.8} />
             <select
               value={sort}
               onChange={(e) => onSort(e.target.value)}
-              className="absolute inset-0 z-10 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent px-3 text-sm font-medium text-ink opacity-0 outline-none sm:focus-ring sm:static sm:h-auto sm:min-w-48 sm:py-2.5 sm:pl-4 sm:pr-10 sm:opacity-100"
+              className="focus-ring relative z-10 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent py-2 text-sm font-medium text-ink outline-none"
             >
-              <option value="featured">Featured</option>
-              <option value="low">Price: low to high</option>
-              <option value="high">Price: high to low</option>
+              <option className="bg-paper text-ink" value="featured">Featured</option>
+              <option className="bg-paper text-ink" value="low">Price: Low to High</option>
+              <option className="bg-paper text-ink" value="high">Price: High to Low</option>
             </select>
-            <ChevronDown className="pointer-events-none absolute right-3 hidden h-4 w-4 text-mute sm:block" />
+            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3 h-4 w-4 text-mute" />
           </label>
         </div>
       </div>
