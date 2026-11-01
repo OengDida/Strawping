@@ -262,7 +262,7 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
 
 /* ---- Product variants (admin form) ---- */
 .variant-section { padding: 16px; border: 1px solid var(--line); display: grid; gap: 12px; }
-.variant-head, .variant-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1.2fr)) minmax(0, .8fr) minmax(0, .9fr) auto; gap: 8px; align-items: center; }
+.variant-head, .variant-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1.2fr)) minmax(0, .9fr) auto; gap: 8px; align-items: center; }
 .variant-head span { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .variant-rows { display: grid; gap: 8px; }
 .variant-row input { width: 100%; min-width: 0; padding: 10px 10px; border: 1px solid var(--line); border-radius: 0; outline: 0; color: var(--ink); background: var(--white); font-size: 13px; }
@@ -291,6 +291,7 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
 .stock-table-wrap { width: 100%; overflow-x: auto; }
 .stock-table { min-width: 760px; }
 .stock-table td { vertical-align: middle; }
+.stock-header-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .stock-number {
   width: 100px; min-height: 40px; padding: 8px 10px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--white);
@@ -302,7 +303,6 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
   border-radius: 8px; background: var(--white); font-weight: 700;
 }
 .stock-adjust button:hover { background: var(--sand); }
-.stock-adjust .stock-save { padding: 0 12px; background: var(--night); color: white; font-size: 12px; }
 .stock-switch { display: inline-flex; }
 .stock-note { margin-top: 14px; line-height: 1.6; }
 .stock-table .cell-product img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; }

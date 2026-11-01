@@ -97,7 +97,10 @@ function setupTabs() {
       document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.add("hidden"));
       const activePane = document.getElementById(`tab-content-${target}`);
       if (activePane) activePane.classList.remove("hidden");
-      if (target === "stock") renderAdminStock();
+      if (target === "stock") {
+        if (!hasUnsavedInventoryChanges()) renderAdminStock();
+        else updateStockSaveButton();
+      }
     });
   });
 }
@@ -241,11 +244,14 @@ function addVariantRow(variant = {}) {
   row.className = "variant-row";
   // Keep the id of an existing variant so old carts/orders stay valid; new rows get a fresh id.
   row.dataset.variantId = variant.id || `var-${crypto.randomUUID()}`;
+  // Inventory remains managed in the Stock Management tab, but must survive
+  // product edits while its controls are absent from this form.
+  row.dataset.stock = String(variant.stock ?? 0);
+  row.dataset.inStock = variant.inStock === false ? "false" : "true";
   row.innerHTML = `
     <input type="text" data-field="size" maxlength="40" placeholder="e.g. M" aria-label="Size" value="${escapeHtml(variant.size || "")}" />
     <input type="text" data-field="color" maxlength="40" placeholder="e.g. Red" aria-label="Color" value="${escapeHtml(variant.color || "")}" />
     <input type="text" data-field="type" maxlength="40" placeholder="e.g. Cotton" aria-label="Type" value="${escapeHtml(variant.type || "")}" />
-    <input type="number" data-field="stock" min="0" step="1" aria-label="Stock (managed in Stock Management)" value="${escapeHtml(variant.stock ?? 0)}" readonly title="Adjust this quantity in Stock Management" />
     <input type="number" data-field="priceAdjustment" step="0.01" aria-label="Price adjustment" value="${escapeHtml(variant.priceAdjustment ?? 0)}" />
     <button type="button" class="link-btn link-danger" data-remove-variant aria-label="Remove this variant">Remove</button>
   `;
@@ -276,10 +282,11 @@ function collectVariants() {
     if (!VARIANT_FIELDS.some(field => variant[field])) {
       throw new Error(`Variant row ${index + 1}: fill in a size, color, or type.`);
     }
-    variant.stock = Number(read("stock") || 0);
+    variant.stock = Number(row.dataset.stock || 0);
     if (!Number.isInteger(variant.stock) || variant.stock < 0) {
       throw new Error(`Variant row ${index + 1}: stock must be a whole number (0 or more).`);
     }
+    variant.inStock = row.dataset.inStock !== "false";
     variant.priceAdjustment = Number(read("priceAdjustment") || 0);
     if (!Number.isFinite(variant.priceAdjustment)) {
       throw new Error(`Variant row ${index + 1}: price adjustment must be a number.`);
@@ -378,13 +385,14 @@ function setupProductManager() {
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("prod-id").value;
+    const existingProduct = id ? StoreDB.getProducts().find(product => product.id === id) : null;
     const productData = {
       name: document.getElementById("prod-name").value.trim(),
       category: document.getElementById("prod-category").value.trim(),
       price: parseFloat(document.getElementById("prod-price").value) || 0,
       description: document.getElementById("prod-description").value.trim(),
-      inStock: true,
-      stock: 0,
+      inStock: existingProduct?.inStock ?? true,
+      stock: existingProduct?.stock ?? 0,
       hasVariants: document.getElementById("prod-has-variants").checked,
       variants: []
     };
@@ -520,20 +528,13 @@ function inventoryStatus(item) {
   return item.inStock !== false && Number(item.stock) > 0 ? "In stock" : "Sold out";
 }
 
-async function saveInventory(productId, variantId, payload) {
-  await StoreDB.updateInventory(productId, variantId, payload);
-  await StoreDB.syncData();
-  renderAdminStock();
-  renderAdminProducts();
-  showToast("Inventory saved securely.");
-}
-
 async function renderAdminStock() {
   const tbody = document.getElementById("admin-stock-table-body");
   if (!tbody) return;
   const products = StoreDB.getProducts();
   if (!products.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No products yet. Add products in the Products tab.</td></tr>';
+    updateStockSaveButton();
     return;
   }
   const rows = [];
@@ -553,51 +554,153 @@ async function renderAdminStock() {
     const status = enabled && stock > 0 ? "In stock" : "Sold out";
     const variantId = variant ? variant.id : "";
     const key = `${product.id}::${variantId}`;
-    return `<tr data-inventory-key="${escapeHtml(key)}">
+    return `<tr data-inventory-key="${escapeHtml(key)}" data-saved-stock="${stock}" data-saved-enabled="${enabled}">
       <td><div class="cell-product"><img src="${escapeHtml(safeImageUrl(product.image))}" alt=""><div class="cell-product-text"><span class="cell-name">${escapeHtml(product.name)}</span><span class="cell-sub">${escapeHtml(label)}</span></div></div></td>
       <td><input class="stock-number" type="number" min="0" max="1000000" step="1" inputmode="numeric" value="${stock}" data-stock-value aria-label="Stock quantity for ${escapeHtml(product.name)}"></td>
-      <td><div class="stock-adjust"><button type="button" data-stock-delta="-1" aria-label="Decrease stock">−</button><button type="button" data-stock-delta="1" aria-label="Increase stock">+</button><button type="button" class="stock-save" data-stock-save>Save</button></div></td>
+      <td><div class="stock-adjust"><button type="button" data-stock-delta="-1" aria-label="Decrease stock">−</button><button type="button" data-stock-delta="1" aria-label="Increase stock">+</button></div></td>
       <td><label class="switch stock-switch"><input type="checkbox" data-stock-enabled ${enabled ? "checked" : ""} aria-label="Enable availability for ${escapeHtml(product.name)}"><span class="switch-track"></span></label></td>
       <td><span class="stock-pill ${status === "In stock" ? "is-in" : "is-out"}" data-stock-status>${status}</span></td>
     </tr>`;
   }).join("");
+  tbody.querySelectorAll("tr[data-inventory-key]").forEach(row => updateInventoryRowState(row, false));
+  updateStockSaveButton();
+}
+
+function getInventoryDraft(row) {
+  const input = row.querySelector("[data-stock-value]");
+  const rawStock = input.value.trim();
+  const stock = Number(rawStock);
+  const enabled = row.querySelector("[data-stock-enabled]").checked;
+  const valid = rawStock !== "" && Number.isInteger(stock) && stock >= 0 && stock <= 1000000;
+  const dirty = !valid || stock !== Number(row.dataset.savedStock) || enabled !== (row.dataset.savedEnabled === "true");
+  return { input, stock, enabled, valid, dirty };
+}
+
+function updateInventoryRowState(row, refreshButton = true) {
+  if (!row?.matches("tr[data-inventory-key]")) return;
+  const { input, stock, enabled, valid, dirty } = getInventoryDraft(row);
+  const status = row.querySelector("[data-stock-status]");
+  input.setAttribute("aria-invalid", valid ? "false" : "true");
+  status.textContent = valid && enabled && stock > 0 ? "In stock" : "Sold out";
+  status.classList.toggle("is-in", valid && enabled && stock > 0);
+  status.classList.toggle("is-out", !valid || !enabled || stock === 0);
+  row.classList.toggle("is-dirty", dirty);
+  if (refreshButton) updateStockSaveButton();
+}
+
+function hasUnsavedInventoryChanges() {
+  return [...document.querySelectorAll("#admin-stock-table-body tr[data-inventory-key]")]
+    .some(row => getInventoryDraft(row).dirty);
+}
+
+function updateStockSaveButton() {
+  const button = document.getElementById("save-all-stock-btn");
+  if (!button) return;
+  const dirtyCount = [...document.querySelectorAll("#admin-stock-table-body tr[data-inventory-key]")]
+    .filter(row => getInventoryDraft(row).dirty).length;
+  button.disabled = savingInventory || dirtyCount === 0;
+  button.textContent = savingInventory
+    ? "Saving changes…"
+    : dirtyCount
+      ? `Save all changes (${dirtyCount})`
+      : "Save all changes";
+}
+
+let savingInventory = false;
+
+async function saveAllInventory() {
+  const tbody = document.getElementById("admin-stock-table-body");
+  const rows = [...tbody.querySelectorAll("tr[data-inventory-key]")];
+  const drafts = rows
+    .map(row => ({ row, ...getInventoryDraft(row) }))
+    .filter(draft => draft.dirty);
+  if (!drafts.length) return;
+
+  const invalidDraft = drafts.find(draft => !draft.valid);
+  if (invalidDraft) {
+    invalidDraft.input.focus();
+    showToast("Enter a whole stock quantity from 0 to 1,000,000 for every edited item.", "error");
+    return;
+  }
+
+  savingInventory = true;
+  tbody.querySelectorAll("input, button").forEach(control => { control.disabled = true; });
+  const refreshButton = document.getElementById("refresh-stock-btn");
+  if (refreshButton) refreshButton.disabled = true;
+  updateStockSaveButton();
+  let savedCount = 0;
+  const failures = [];
+  try {
+    // The API currently accepts one inventory row per request, so save the
+    // edited rows in sequence and refresh the cached catalog once afterward.
+    for (const draft of drafts) {
+      const [productId, variantId] = draft.row.dataset.inventoryKey.split("::");
+      try {
+        await StoreDB.updateInventory(productId, variantId || null, {
+          stock: draft.stock,
+          inStock: draft.enabled,
+        });
+        draft.row.dataset.savedStock = String(draft.stock);
+        draft.row.dataset.savedEnabled = String(draft.enabled);
+        savedCount++;
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+
+    let syncOk = true;
+    if (savedCount > 0) {
+      const sync = await StoreDB.syncData();
+      syncOk = sync.ok;
+      if (sync.ok) renderAdminProducts();
+    }
+
+    rows.forEach(updateInventoryRowState);
+    if (failures.length) {
+      showToast(
+        `Saved ${savedCount} item(s); ${failures.length} failed. Review the unsaved rows and try again.`,
+        "error"
+      );
+    } else if (!syncOk) {
+      showToast("Stock changes were saved, but the catalog could not refresh. Use Refresh stock to retry.", "error");
+    } else {
+      showToast(`Saved stock changes for ${savedCount} item(s).`);
+    }
+  } finally {
+    savingInventory = false;
+    tbody.querySelectorAll("input, button").forEach(control => { control.disabled = false; });
+    if (refreshButton) refreshButton.disabled = false;
+    updateStockSaveButton();
+  }
 }
 
 function setupStockManager() {
   const tbody = document.getElementById("admin-stock-table-body");
   document.getElementById("refresh-stock-btn")?.addEventListener("click", async () => {
+    if (hasUnsavedInventoryChanges() && !confirm("Discard unsaved stock changes and refresh inventory?")) return;
     const result = await StoreDB.syncData();
     if (!result.ok) showToast("Could not refresh inventory: " + result.error, "error");
     renderAdminStock();
   });
+  document.getElementById("save-all-stock-btn")?.addEventListener("click", saveAllInventory);
   tbody?.addEventListener("click", async (event) => {
     const row = event.target.closest("tr[data-inventory-key]");
     if (!row) return;
-    const [productId, variantId] = row.dataset.inventoryKey.split("::");
     const input = row.querySelector("[data-stock-value]");
     const deltaButton = event.target.closest("[data-stock-delta]");
     if (deltaButton) {
       input.value = Math.max(0, Math.min(1000000, Number(input.value || 0) + Number(deltaButton.dataset.stockDelta)));
-      return;
-    }
-    if (event.target.closest("[data-stock-save]")) {
-      const stock = Number(input.value);
-      if (!Number.isInteger(stock) || stock < 0 || stock > 1000000) {
-        showToast("Enter a whole stock quantity from 0 to 1,000,000.", "error");
-        return;
-      }
-      const enabled = row.querySelector("[data-stock-enabled]").checked;
-      try { await saveInventory(productId, variantId || null, { stock, inStock: enabled }); }
-      catch (error) { showToast(error.message || "Could not save stock.", "error"); }
+      updateInventoryRowState(row);
     }
   });
+  tbody?.addEventListener("input", (event) => {
+    if (!event.target.matches("[data-stock-value]")) return;
+    updateInventoryRowState(event.target.closest("tr[data-inventory-key]"));
+  });
   tbody?.addEventListener("change", async (event) => {
-    if (!event.target.matches("[data-stock-enabled]")) return;
-    const row = event.target.closest("tr[data-inventory-key]");
-    const [productId, variantId] = row.dataset.inventoryKey.split("::");
-    const stock = Number(row.querySelector("[data-stock-value]").value);
-    try { await saveInventory(productId, variantId || null, { inStock: event.target.checked }); }
-    catch (error) { event.target.checked = !event.target.checked; showToast(error.message || "Could not update availability.", "error"); }
+    if (event.target.matches("[data-stock-enabled]")) {
+      updateInventoryRowState(event.target.closest("tr[data-inventory-key]"));
+    }
   });
 }
 

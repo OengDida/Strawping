@@ -131,9 +131,12 @@
           <div>
             <p class="eyebrow">Inventory</p>
             <h2 class="display pane-title">Stock Management</h2>
-            <p class="pane-sub">Adjust available quantities and independently control whether each item can be purchased.</p>
+            <p class="pane-sub">Adjust quantities and availability for any number of items, then save all changes together.</p>
           </div>
-          <button id="refresh-stock-btn" class="btn-outline" type="button">Refresh stock</button>
+          <div class="stock-header-actions">
+            <button id="refresh-stock-btn" class="btn-outline" type="button">Refresh stock</button>
+            <button id="save-all-stock-btn" class="btn-solid" type="button" disabled>Save all changes</button>
+          </div>
         </div>
         <div class="table-card stock-management-card">
           <div class="stock-table-wrap">
@@ -324,7 +327,7 @@
             &mdash; use a negative number for a discount.
           </p>
           <div class="variant-head" aria-hidden="true">
-            <span>Size</span><span>Color</span><span>Type</span><span>Stock (managed separately)</span><span>Price +/-</span><span></span>
+            <span>Size</span><span>Color</span><span>Type</span><span>Price +/-</span><span></span>
           </div>
           <div id="variant-rows" class="variant-rows"></div>
           <button type="button" id="add-variant-btn" class="btn-outline">Add variant</button>
