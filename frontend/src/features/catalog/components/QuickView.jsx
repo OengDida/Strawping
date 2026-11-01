@@ -12,7 +12,9 @@ function Body({ product, onClose, onAdd }) {
   const [added, setAdded] = useState(false);
   const images = product.images?.length ? product.images : [product.image].filter(Boolean);
   const variant = product.variants?.find((item) => item.id === variantId) || null;
-  const unavailable = product.hasVariants && (!variant || variant.stock < qty);
+  const unavailable = product.hasVariants
+    ? (!variant || variant.inStock === false || variant.stock < qty)
+    : (product.inStock === false || product.stock < qty);
   const fields = product.variantFields || [];
   const add = () => { if (unavailable || !product.inStock) return; onAdd(product, variant, qty); setAdded(true); setTimeout(() => setAdded(false), 1500); };
   return <div className="relative grid md:grid-cols-2" onClick={(event) => event.stopPropagation()}>
@@ -25,8 +27,8 @@ function Body({ product, onClose, onAdd }) {
       <p className="eyebrow">{product.category}</p><h2 id="qv-title" className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">{product.name}</h2>
       <p className="mt-6 text-2xl tabular-nums">{formatPrice(variantPrice(product, variant))}</p>
       <p className="mt-6 whitespace-pre-line leading-relaxed text-charcoal/75">{product.description || 'Contact us for more product details.'}</p>
-      {product.hasVariants && <fieldset className="mt-8"><legend className="eyebrow mb-3">Choose {fields.join(' / ') || 'option'}</legend><div className="flex flex-wrap gap-2">{product.variants.map((item) => { const label = fields.map((field) => item[field]).filter(Boolean).join(' / '); const selected = item.id === variantId; return <button key={item.id} type="button" disabled={item.stock < 1} aria-pressed={selected} onClick={() => setVariantId(item.id)} className={`focus-ring rounded-full border px-4 py-2 text-sm ${selected ? 'border-ink bg-ink text-white' : 'border-ink/15'} disabled:cursor-not-allowed disabled:opacity-35`}>{label} {item.stock < 1 ? '(Out of stock)' : ''}</button>; })}</div>{variant && <p className="mt-2 text-xs text-mute">{variant.stock} in stock</p>}</fieldset>}
-      <div className="mt-8 flex items-center gap-3"><Stepper value={qty} onChange={setQty} /><motion.button type="button" whileTap={{ scale: .97 }} onClick={add} disabled={!product.inStock || unavailable} className="glass-dark focus-ring flex h-12 min-w-0 flex-1 items-center justify-center rounded-full px-4 text-sm font-medium disabled:opacity-40">{added ? <><Check className="mr-2 h-4 w-4" /> Added to bag</> : !product.inStock ? 'Out of stock' : unavailable ? 'Choose available option' : `Add to bag · ${formatPrice(variantPrice(product, variant) * qty)}`}</motion.button></div>
+      {product.hasVariants && <fieldset className="mt-8"><legend className="eyebrow mb-3">Choose {fields.join(' / ') || 'option'}</legend><div className="flex flex-wrap gap-2">{product.variants.map((item) => { const label = fields.map((field) => item[field]).filter(Boolean).join(' / '); const selected = item.id === variantId; return <button key={item.id} type="button" disabled={item.inStock === false || item.stock < 1} aria-pressed={selected} onClick={() => setVariantId(item.id)} className={`focus-ring rounded-full border px-4 py-2 text-sm ${selected ? 'border-ink bg-ink text-white' : 'border-ink/15'} disabled:cursor-not-allowed disabled:opacity-35`}>{label} {item.inStock === false || item.stock < 1 ? '(Sold out)' : ''}</button>; })}</div>{variant && <p className="mt-2 text-xs text-mute">{variant.stock} in stock</p>}</fieldset>}
+      <div className="mt-8 flex items-center gap-3"><Stepper value={qty} onChange={setQty} /><motion.button type="button" whileTap={{ scale: .97 }} onClick={add} disabled={unavailable || !product.inStock} className="glass-dark focus-ring flex h-12 min-w-0 flex-1 items-center justify-center rounded-full px-4 text-sm font-medium disabled:opacity-40">{added ? <><Check className="mr-2 h-4 w-4" /> Added to bag</> : unavailable || !product.inStock ? 'Sold out' : `Add to bag · ${formatPrice(variantPrice(product, variant) * qty)}`}</motion.button></div>
     </div>
   </div>;
 }

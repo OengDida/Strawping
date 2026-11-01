@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupAuth();
   setupTabs();
   setupProductManager();
+  setupStockManager();
   setupStoreCustomizer();
   setupTelegramBotManager();
   setupBackupManager();
@@ -96,6 +97,7 @@ function setupTabs() {
       document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.add("hidden"));
       const activePane = document.getElementById(`tab-content-${target}`);
       if (activePane) activePane.classList.remove("hidden");
+      if (target === "stock") renderAdminStock();
     });
   });
 }
@@ -243,7 +245,7 @@ function addVariantRow(variant = {}) {
     <input type="text" data-field="size" maxlength="40" placeholder="e.g. M" aria-label="Size" value="${escapeHtml(variant.size || "")}" />
     <input type="text" data-field="color" maxlength="40" placeholder="e.g. Red" aria-label="Color" value="${escapeHtml(variant.color || "")}" />
     <input type="text" data-field="type" maxlength="40" placeholder="e.g. Cotton" aria-label="Type" value="${escapeHtml(variant.type || "")}" />
-    <input type="number" data-field="stock" min="0" step="1" aria-label="Stock" value="${escapeHtml(variant.stock ?? 0)}" />
+    <input type="number" data-field="stock" min="0" step="1" aria-label="Stock (managed in Stock Management)" value="${escapeHtml(variant.stock ?? 0)}" readonly title="Adjust this quantity in Stock Management" />
     <input type="number" data-field="priceAdjustment" step="0.01" aria-label="Price adjustment" value="${escapeHtml(variant.priceAdjustment ?? 0)}" />
     <button type="button" class="link-btn link-danger" data-remove-variant aria-label="Remove this variant">Remove</button>
   `;
@@ -311,7 +313,6 @@ function setupProductManager() {
     resetProductImagePicker();
     document.getElementById("prod-id").value = "";
     document.getElementById("product-modal-title").textContent = "Add New Product";
-    document.getElementById("prod-instock").checked = true;
     resetVariantEditor(null);
     modal.classList.remove("hidden");
     modal.classList.add("flex");
@@ -382,7 +383,8 @@ function setupProductManager() {
       category: document.getElementById("prod-category").value.trim(),
       price: parseFloat(document.getElementById("prod-price").value) || 0,
       description: document.getElementById("prod-description").value.trim(),
-      inStock: document.getElementById("prod-instock").checked,
+      inStock: true,
+      stock: 0,
       hasVariants: document.getElementById("prod-has-variants").checked,
       variants: []
     };
@@ -444,7 +446,7 @@ function renderAdminProducts() {
   if (products.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="5" class="table-empty">
+        <td colspan="4" class="table-empty">
           No products in catalog. Click "Add New Product" to create one!
         </td>
       </tr>
@@ -473,33 +475,12 @@ function renderAdminProducts() {
       <td class="cell-price">
         ${escapeHtml(currency)}${Number(prod.price).toFixed(2)}
       </td>
-      <td>
-        <button
-          data-action="toggle-stock" data-id="${escapeHtml(prod.id)}"
-          class="stock-pill ${prod.inStock ? 'is-in' : 'is-out'}"
-          type="button"
-          title="Click to toggle stock status"
-        >
-          ${prod.inStock ? 'In stock' : 'Sold out'}
-        </button>
-      </td>
       <td class="cell-actions">
         <button data-action="edit-product" data-id="${escapeHtml(prod.id)}" class="link-btn" type="button" aria-label="Edit ${escapeHtml(prod.name)}">Edit</button>
         <button data-action="delete-product" data-id="${escapeHtml(prod.id)}" class="link-btn link-danger" type="button" aria-label="Delete ${escapeHtml(prod.name)}">Delete</button>
       </td>
     </tr>
   `).join("");
-}
-
-async function toggleProductStock(id) {
-  const products = StoreDB.getProducts();
-  const prod = products.find(p => p.id === id);
-  if (prod) {
-    await StoreDB.updateProduct(id, { inStock: !prod.inStock });
-    renderAdminProducts();
-    await updateServerSyncStatus();
-    showToast("Stock status saved to server automatically.");
-  }
 }
 
 function editProduct(id) {
@@ -513,7 +494,6 @@ function editProduct(id) {
   document.getElementById("prod-price").value = prod.price;
   resetProductImagePicker(prod.images?.length ? prod.images : (prod.image ? [prod.image] : []), prod.thumbnail || prod.image || "");
   document.getElementById("prod-description").value = prod.description || "";
-  document.getElementById("prod-instock").checked = prod.inStock;
   resetVariantEditor(prod);
 
   document.getElementById("product-modal-title").textContent = "Edit Product";
@@ -530,6 +510,95 @@ async function deleteProduct(id) {
     await updateServerSyncStatus();
     showToast("Product removed from server automatically.");
   }
+}
+
+
+// ==========================================
+// STOCK MANAGEMENT
+// ==========================================
+function inventoryStatus(item) {
+  return item.inStock !== false && Number(item.stock) > 0 ? "In stock" : "Sold out";
+}
+
+async function saveInventory(productId, variantId, payload) {
+  await StoreDB.updateInventory(productId, variantId, payload);
+  await StoreDB.syncData();
+  renderAdminStock();
+  renderAdminProducts();
+  showToast("Inventory saved securely.");
+}
+
+async function renderAdminStock() {
+  const tbody = document.getElementById("admin-stock-table-body");
+  if (!tbody) return;
+  const products = StoreDB.getProducts();
+  if (!products.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="table-empty">No products yet. Add products in the Products tab.</td></tr>';
+    return;
+  }
+  const rows = [];
+  for (const product of products) {
+    if (product.hasVariants && Array.isArray(product.variants)) {
+      for (const variant of product.variants) {
+        const label = [variant.size, variant.color, variant.type].filter(Boolean).join(" / ");
+        rows.push({ product, variant, label });
+      }
+    } else {
+      rows.push({ product, variant: null, label: "Standard item" });
+    }
+  }
+  tbody.innerHTML = rows.map(({product, variant, label}) => {
+    const stock = Number(variant ? variant.stock : product.stock) || 0;
+    const enabled = (variant ? variant.inStock : product.inStock) !== false;
+    const status = enabled && stock > 0 ? "In stock" : "Sold out";
+    const variantId = variant ? variant.id : "";
+    const key = `${product.id}::${variantId}`;
+    return `<tr data-inventory-key="${escapeHtml(key)}">
+      <td><div class="cell-product"><img src="${escapeHtml(safeImageUrl(product.image))}" alt=""><div class="cell-product-text"><span class="cell-name">${escapeHtml(product.name)}</span><span class="cell-sub">${escapeHtml(label)}</span></div></div></td>
+      <td><input class="stock-number" type="number" min="0" max="1000000" step="1" inputmode="numeric" value="${stock}" data-stock-value aria-label="Stock quantity for ${escapeHtml(product.name)}"></td>
+      <td><div class="stock-adjust"><button type="button" data-stock-delta="-1" aria-label="Decrease stock">−</button><button type="button" data-stock-delta="1" aria-label="Increase stock">+</button><button type="button" class="stock-save" data-stock-save>Save</button></div></td>
+      <td><label class="switch stock-switch"><input type="checkbox" data-stock-enabled ${enabled ? "checked" : ""} aria-label="Enable availability for ${escapeHtml(product.name)}"><span class="switch-track"></span></label></td>
+      <td><span class="stock-pill ${status === "In stock" ? "is-in" : "is-out"}" data-stock-status>${status}</span></td>
+    </tr>`;
+  }).join("");
+}
+
+function setupStockManager() {
+  const tbody = document.getElementById("admin-stock-table-body");
+  document.getElementById("refresh-stock-btn")?.addEventListener("click", async () => {
+    const result = await StoreDB.syncData();
+    if (!result.ok) showToast("Could not refresh inventory: " + result.error, "error");
+    renderAdminStock();
+  });
+  tbody?.addEventListener("click", async (event) => {
+    const row = event.target.closest("tr[data-inventory-key]");
+    if (!row) return;
+    const [productId, variantId] = row.dataset.inventoryKey.split("::");
+    const input = row.querySelector("[data-stock-value]");
+    const deltaButton = event.target.closest("[data-stock-delta]");
+    if (deltaButton) {
+      input.value = Math.max(0, Math.min(1000000, Number(input.value || 0) + Number(deltaButton.dataset.stockDelta)));
+      return;
+    }
+    if (event.target.closest("[data-stock-save]")) {
+      const stock = Number(input.value);
+      if (!Number.isInteger(stock) || stock < 0 || stock > 1000000) {
+        showToast("Enter a whole stock quantity from 0 to 1,000,000.", "error");
+        return;
+      }
+      const enabled = row.querySelector("[data-stock-enabled]").checked;
+      try { await saveInventory(productId, variantId || null, { stock, inStock: enabled }); }
+      catch (error) { showToast(error.message || "Could not save stock.", "error"); }
+    }
+  });
+  tbody?.addEventListener("change", async (event) => {
+    if (!event.target.matches("[data-stock-enabled]")) return;
+    const row = event.target.closest("tr[data-inventory-key]");
+    const [productId, variantId] = row.dataset.inventoryKey.split("::");
+    const stock = Number(row.querySelector("[data-stock-value]").value);
+    try { await saveInventory(productId, variantId || null, { inStock: event.target.checked }); }
+    catch (error) { event.target.checked = !event.target.checked; showToast(error.message || "Could not update availability.", "error"); }
+  });
 }
 
 // ==========================================
@@ -777,9 +846,6 @@ function setupAdminActionDelegation() {
 
     try {
       switch (action) {
-        case "toggle-stock":
-          await toggleProductStock(id);
-          break;
         case "edit-product":
           await editProduct(id);
           break;
@@ -808,7 +874,6 @@ function setupAdminActionDelegation() {
 }
 
 // Expose globals for HTML onclicks (kept for backward compatibility with inline handlers)
-window.toggleProductStock = toggleProductStock;
 window.editProduct = editProduct;
 window.deleteProduct = deleteProduct;
 window.changeOrderStatus = changeOrderStatus;

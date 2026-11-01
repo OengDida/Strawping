@@ -284,3 +284,29 @@ code { padding: 1px 6px; background: var(--sand); font-family: ui-monospace, SFM
 .admin-image-tile.is-thumbnail{outline:2px solid #98734c;outline-offset:1px}
 .admin-image-tile.is-thumbnail button[data-thumb-index]{background:#98734c;color:white}
 .admin-image-tile button[data-remove-image]{position:absolute;right:5px;top:5px;border-radius:50%;width:25px;height:25px;background:#fff;color:#222;font-size:18px;line-height:1}
+
+
+/* ---------- Stock management ---------- */
+.stock-management-card { overflow: hidden; }
+.stock-table-wrap { width: 100%; overflow-x: auto; }
+.stock-table { min-width: 760px; }
+.stock-table td { vertical-align: middle; }
+.stock-number {
+  width: 100px; min-height: 40px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--white);
+  font-variant-numeric: tabular-nums;
+}
+.stock-adjust { display: flex; align-items: center; gap: 6px; }
+.stock-adjust button {
+  min-width: 34px; min-height: 34px; padding: 0 9px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--white); font-weight: 700;
+}
+.stock-adjust button:hover { background: var(--sand); }
+.stock-adjust .stock-save { padding: 0 12px; background: var(--night); color: white; font-size: 12px; }
+.stock-switch { display: inline-flex; }
+.stock-note { margin-top: 14px; line-height: 1.6; }
+.stock-table .cell-product img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; }
+@media (max-width: 640px) {
+  .stock-table { min-width: 700px; }
+  .stock-table-wrap { margin: 0; }
+}

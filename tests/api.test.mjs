@@ -92,6 +92,7 @@ test("admin endpoints reject requests without a valid signed session", async () 
     event("/orders/order-1", "PATCH", { status: "Completed" }),
     event("/orders/order-1", "DELETE", {}),
     event("/products", "PUT", { products: [] }),
+    event("/inventory/adjust", "POST", { productId: "prod-1", stock: 1 }),
     event("/settings", "PUT", {}),
     event("/notify/test", "POST", {})
   ];
@@ -155,7 +156,8 @@ test("settings and products are readable through the public storefront API", asy
     images: ["https://images.example/mug.jpg"],
     thumbnail: "https://images.example/mug.jpg",
     description: "Cup",
-    inStock: true
+    inStock: true,
+    stock: 0
   }]);
 
   const settings = await handler(event("/settings"));
@@ -306,6 +308,37 @@ test("a valid signed admin session can update settings with its CSRF token", asy
   assert.equal(JSON.parse(response.body).settings.storeName, "New Store");
 });
 
+test("admin inventory adjustments require CSRF and call the transactional database function", async () => {
+  const session = signedSession();
+  let rpcArgs;
+  globalThis.fetch = withSessionStore(async (url, options = {}) => {
+    assert.match(String(url), /rpc\/admin_adjust_inventory$/);
+    rpcArgs = JSON.parse(options.body);
+    return reply({ productId: "prod-mug", variantId: null, stock: 8, inStock: false });
+  });
+  const headers = sessionHeaders(session, { "x-csrf-token": session.csrfToken });
+  const response = await handler(event("/inventory/adjust", "POST", {
+    csrfToken: session.csrfToken,
+    productId: "prod-mug",
+    stock: 8,
+    inStock: false
+  }, headers));
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(rpcArgs, {
+    p_product_id: "prod-mug",
+    p_variant_id: null,
+    p_stock: 8,
+    p_in_stock: false
+  });
+
+  const rejected = await handler(event("/inventory/adjust", "POST", {
+    csrfToken: session.csrfToken,
+    productId: "prod-mug",
+    stock: -1
+  }, headers));
+  assert.equal(rejected.statusCode, 400);
+});
+
 test("login calls the rate limiter with the SQL function's argument names", async () => {
   let rpcBody;
   globalThis.fetch = async (url, options) => {
@@ -367,12 +400,13 @@ test("order totals and item details are derived from the server catalog", async 
         price: 3.5,
         image: "",
         description: "",
-        inStock: true
+        inStock: true,
+        stock: 10
       }] }]);
     }
-    if (requestUrl.endsWith("/rest/v1/store_orders") && options.method === "POST") {
-      savedOrder = JSON.parse(options.body);
-      return reply([savedOrder]);
+    if (requestUrl.endsWith("/rest/v1/rpc/place_store_order") && options.method === "POST") {
+      savedOrder = JSON.parse(options.body).p_order;
+      return reply(savedOrder);
     }
     throw new Error(`Unexpected request: ${requestUrl}`);
   };
@@ -426,7 +460,8 @@ test("Vercel adapter forwards /api/products to the shared API handler", async ()
       images: [],
       thumbnail: "",
       description: "",
-      inStock: true
+      inStock: true,
+      stock: 0
     }] }]);
   };
 
@@ -446,7 +481,8 @@ test("Vercel adapter forwards /api/products to the shared API handler", async ()
       images: [],
       thumbnail: "",
       description: "",
-      inStock: true
+      inStock: true,
+      stock: 0
     }]
   });
 });
@@ -671,10 +707,10 @@ function orderFetch(catalog, onSave = () => {}) {
     const requestUrl = String(url);
     if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
     if (requestUrl.includes("key=eq.products")) return reply([{ value: catalog }]);
-    if (requestUrl.endsWith("/rest/v1/store_orders") && options.method === "POST") {
-      const saved = JSON.parse(options.body);
+    if (requestUrl.endsWith("/rest/v1/rpc/place_store_order") && options.method === "POST") {
+      const saved = JSON.parse(options.body).p_order;
       onSave(saved);
-      return reply([saved]);
+      return reply(saved);
     }
     throw new Error(`Unexpected request: ${requestUrl}`);
   };
@@ -700,7 +736,7 @@ test("the public products API returns variants and hides products with broken va
     VARIANT_TEE,
     { ...VARIANT_TEE, id: "prod-broken", variants: [] },
     { ...VARIANT_TEE, id: "prod-dupe", variants: [VARIANT_TEE.variants[0], { ...VARIANT_TEE.variants[0], id: "var-other" }] },
-    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true }
+    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true, stock: 5 }
   ]);
   const response = await handler(event("/products"));
   const products = JSON.parse(response.body).products;
@@ -714,8 +750,12 @@ test("admins can save a product with variants and the server rejects mixed varia
   const session = signedSession();
   let written;
   globalThis.fetch = withSessionStore(async (url, options = {}) => {
-    written = JSON.parse(options.body);
-    return reply([{ key: "products", value: written.value }]);
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/rpc/admin_save_products")) {
+      written = { value: JSON.parse(options.body).p_products };
+      return reply(written.value);
+    }
+    throw new Error(`Unexpected request: ${requestUrl}`);
   });
   const headers = { cookie: `__Host-strawping_admin=${session.token}`, "x-csrf-token": session.csrfToken };
 
@@ -770,7 +810,7 @@ test("orders for variant products need a valid in-stock variant and use the serv
 
 test("a variant id is rejected for a product that has no variants", async () => {
   globalThis.fetch = orderFetch([
-    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true }
+    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true, stock: 5 }
   ]);
   const response = await placeOrder([{ id: "prod-mug", variantId: "var-x", quantity: 1 }]);
   assert.equal(response.statusCode, 400);

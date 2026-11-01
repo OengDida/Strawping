@@ -35,6 +35,9 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
         <span aria-hidden className="sheen pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100" />
         <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[1.75rem] ring-1 ring-inset ring-white/0 transition duration-500 group-hover:ring-white/50 dark:group-hover:ring-white/15" />
 
+        {!product.inStock && (
+          <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/75 px-3 py-1.5 text-[11px] font-medium text-white">Sold out</span>
+        )}
         {product.tag && (
           <span className="glass pointer-events-none absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-medium">
             {product.tag}
@@ -52,8 +55,9 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
           <motion.button
             type="button"
             whileTap={{ scale: 0.92 }}
-            onClick={() => onAdd(product)}
-            aria-label={`Add ${product.name} to bag`}
+            onClick={() => { if (product.inStock) onAdd(product); }}
+            aria-label={product.inStock ? `Add ${product.name} to bag` : `${product.name} sold out`}
+            disabled={!product.inStock}
             className="glass-dark focus-ring flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium"
           >
             <Plus className="h-4 w-4" /> Add

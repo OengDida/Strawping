@@ -97,7 +97,12 @@ async function db(path, opts = {}) {
   } catch {
     // A non-JSON database response is handled as a generic server error.
   }
-  if (!response.ok) throw new Error(`Database operation failed (${response.status})`);
+  if (!response.ok) {
+    const error = Object.assign(new Error(data?.message || `Database operation failed (${response.status})`), {
+      status: data?.code === "P0001" ? 409 : response.status
+    });
+    throw error;
+  }
   return data;
 }
 
@@ -431,6 +436,7 @@ function normalizeVariants(value, basePriceCents) {
       color: attributes.color,
       type: attributes.type,
       stock: raw.stock,
+      inStock: raw.inStock !== false,
       priceAdjustment: adjustmentCents / 100
     });
   }
@@ -487,7 +493,8 @@ function normalizeProduct(value) {
     (thumbnail && !images.includes(thumbnail) && images.length)
   ) return null;
   const image = thumbnail || images[0] || legacyImage;
-  if (typeof value.inStock !== "boolean") return null;
+  if (value.inStock !== undefined && typeof value.inStock !== "boolean") return null;
+  if (value.stock !== undefined && (!Number.isInteger(value.stock) || value.stock < 0 || value.stock > 1000000)) return null;
   if (value.hasVariants !== undefined && typeof value.hasVariants !== "boolean") return null;
 
   const product = {
@@ -499,7 +506,8 @@ function normalizeProduct(value) {
     images: images.length ? images : (image ? [image] : []),
     thumbnail: thumbnail || image,
     description,
-    inStock: value.inStock
+    inStock: value.inStock !== false,
+    stock: Number.isInteger(value.stock) ? value.stock : 0
   };
 
   if (value.hasVariants === true) {
@@ -751,7 +759,7 @@ export async function handler(event, context = {}) {
         seen.add(lineKey);
 
         const product = catalog.get(requested.id);
-        if (!product || !product.inStock) {
+        if (!product) {
           return json(409, { error: "A selected product is unavailable. Refresh the catalog and try again." });
         }
 
@@ -767,14 +775,17 @@ export async function handler(event, context = {}) {
           if (!variant) {
             return json(400, { error: `The selected option for "${product.name}" is not valid. Refresh and try again.` });
           }
-          if (variant.stock < requested.quantity) {
+          if (product.inStock === false || variant.inStock === false || variant.stock < requested.quantity) {
             return json(409, { error: `"${product.name}" (${variantLabel(variant)}) does not have enough stock.` });
           }
           unitCents += Math.round(variant.priceAdjustment * 100);
           line.variantId = variant.id;
           line.variantLabel = variantLabel(variant);
-        } else if (requested.variantId != null) {
-          return json(400, { error: "Invalid order item." });
+        } else {
+          if (requested.variantId != null) return json(400, { error: "Invalid order item." });
+          if (product.inStock === false || Number(product.stock) < requested.quantity) {
+            return json(409, { error: "A selected product is unavailable or has insufficient stock." });
+          }
         }
 
         totalCents += unitCents * requested.quantity;
@@ -792,14 +803,14 @@ export async function handler(event, context = {}) {
         items,
         total: totalCents / 100
       };
-      const rows = await db("store_orders", {
+      // One PostgreSQL transaction validates and deducts every line, then inserts the order.
+      // No browser-side or preflight stock read is trusted for the final decision.
+      const created = await db("rpc/place_store_order", {
         method: "POST",
-        body: JSON.stringify(order),
-        prefer: "return=representation"
+        body: JSON.stringify({ p_order: order })
       });
-      if (!rows?.length) return json(500, { error: "Failed to create order" });
+      if (!created || typeof created !== "object") return json(500, { error: "Failed to create order" });
 
-      const created = rows[0];
       const telegramSent = await sendTelegramMessage(formatOrderTelegramMessage(created));
       return json(201, { order: created, telegramSent });
     }
@@ -856,6 +867,33 @@ export async function handler(event, context = {}) {
       return json(200, { success: true });
     }
 
+    if (resource === "inventory" && segments[1] === "adjust" && method === "POST") {
+      const session = await verifyAdminSession(event);
+      if (!session) return json(401, { error: "Unauthorized" });
+      const body = parseBody(event);
+      if (!isRecord(body) || !verifyCsrfToken(event, body.csrfToken, session)) {
+        return json(403, { error: "Invalid CSRF token" });
+      }
+      if (
+        typeof body.productId !== "string" || !ID_PATTERN.test(body.productId) ||
+        (body.variantId != null && (typeof body.variantId !== "string" || !ID_PATTERN.test(body.variantId))) ||
+        (body.stock !== undefined && (!Number.isInteger(body.stock) || body.stock < 0 || body.stock > 1000000)) ||
+        (body.inStock !== undefined && typeof body.inStock !== "boolean") ||
+        (body.stock === undefined && body.inStock === undefined)
+      ) return json(400, { error: "Invalid inventory update" });
+
+      const result = await db("rpc/admin_adjust_inventory", {
+        method: "POST",
+        body: JSON.stringify({
+          p_product_id: body.productId,
+          p_variant_id: body.variantId ?? null,
+          p_stock: body.stock ?? null,
+          p_in_stock: body.inStock ?? null
+        })
+      });
+      return json(200, { inventory: result });
+    }
+
     if (resource === "products" && method === "PUT") {
       const session = await verifyAdminSession(event);
       if (!session) return json(401, { error: "Unauthorized" });
@@ -876,15 +914,17 @@ export async function handler(event, context = {}) {
           return json(400, { error: "Invalid or duplicate product record" });
         }
         ids.add(product.id);
+        ids.add(product.id);
         products.push(product);
       }
 
-      await db("store_data?on_conflict=key", {
+      // Catalog edits merge against the latest inventory while holding the same
+      // database row lock used by checkout and inventory adjustments.
+      const savedProducts = await db("rpc/admin_save_products", {
         method: "POST",
-        body: JSON.stringify({ key: "products", value: products }),
-        prefer: "resolution=merge-duplicates,return=representation"
+        body: JSON.stringify({ p_products: products })
       });
-      return json(200, { products });
+      return json(200, { products: savedProducts });
     }
 
     if (resource === "settings" && method === "PUT") {
@@ -911,9 +951,11 @@ export async function handler(event, context = {}) {
       ? "Too many requests"
       : status === 503
         ? "A required service is temporarily unavailable."
-        : status === 400 || status === 413
-          ? error.message
-          : "Server error";
+        : status === 409
+          ? "A selected item is no longer available or has insufficient stock."
+          : status === 400 || status === 413
+            ? error.message
+            : "Server error";
     if (status === 500) {
       // Full detail stays in the server logs; the client only gets a reference id.
       const requestId = crypto.randomUUID();

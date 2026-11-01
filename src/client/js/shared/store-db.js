@@ -18,7 +18,7 @@ class StoreDB {
   static async request(path, options={}) {
     const headers={"Content-Type":"application/json",...(options.headers||{})};
     const method = options.method ? options.method.toUpperCase() : "GET";
-    const needsCsrf = ["PUT","PATCH","DELETE"].includes(method) || path === "notify/test" || path === "images/upload" || path === "auth/logout";
+    const needsCsrf = ["PUT","PATCH","DELETE"].includes(method) || path === "notify/test" || path === "images/upload" || path === "inventory/adjust" || path === "auth/logout";
     if(needsCsrf) {
       headers["X-CSRF-Token"]=this.csrfToken();
       let bodyObj = {};
@@ -79,6 +79,10 @@ class StoreDB {
     if(!Array.isArray(products)||products.length>500) throw new Error("Invalid product list");
     const r=await this.request("products",{method:"PUT",body:JSON.stringify({products})});
     localStorage.setItem(this.PRODUCTS_KEY,JSON.stringify(r.products)); return r.products;
+  }
+  static async updateInventory(productId, variantId, changes){
+    const payload={productId,variantId:variantId||null,...changes};
+    return this.request("inventory/adjust",{method:"POST",body:JSON.stringify(payload)});
   }
   static async uploadProductImage(image){
     const result=await this.request("images/upload",{method:"POST",body:JSON.stringify({image})});

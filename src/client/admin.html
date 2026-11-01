@@ -81,6 +81,9 @@
           <span>Products</span>
           <span id="tab-products-badge" class="tab-badge">0</span>
         </button>
+        <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="stock">
+          <span>Stock Management</span>
+        </button>
         <button class="nav-tab" type="button" role="tab" aria-selected="false" data-tab="orders">
           <span>Orders</span>
           <span id="tab-orders-badge" class="tab-badge">0</span>
@@ -97,7 +100,7 @@
           <div>
             <p class="eyebrow">Catalog</p>
             <h2 class="display pane-title">Product catalog</h2>
-            <p class="pane-sub">Add, edit prices, descriptions, and stock status (persisted to server)</p>
+            <p class="pane-sub">Manage product details and pricing</p>
           </div>
           <button id="open-add-product-btn" class="btn-solid" type="button">
             <svg aria-hidden="true" class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12M6 12h12"/></svg>
@@ -113,7 +116,6 @@
                 <th scope="col">Item</th>
                 <th scope="col">Category</th>
                 <th scope="col">Price</th>
-                <th scope="col">Stock status</th>
                 <th scope="col" class="col-right">Actions</th>
               </tr>
             </thead>
@@ -122,6 +124,26 @@
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section id="tab-content-stock" class="tab-pane hidden" role="tabpanel" aria-label="Stock Management">
+        <div class="pane-head">
+          <div>
+            <p class="eyebrow">Inventory</p>
+            <h2 class="display pane-title">Stock Management</h2>
+            <p class="pane-sub">Adjust available quantities and independently control whether each item can be purchased.</p>
+          </div>
+          <button id="refresh-stock-btn" class="btn-outline" type="button">Refresh stock</button>
+        </div>
+        <div class="table-card stock-management-card">
+          <div class="stock-table-wrap">
+            <table class="data-table stock-table">
+              <thead><tr><th scope="col">Product / variant</th><th scope="col">Stock</th><th scope="col">Quick adjust</th><th scope="col">Availability</th><th scope="col">Store status</th></tr></thead>
+              <tbody id="admin-stock-table-body"><tr><td colspan="5" class="table-empty">Loading inventory…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <p class="field-hint stock-note">A disabled availability switch or a stock quantity of zero makes the item appear as Sold out. Availability does not change the quantity.</p>
       </section>
 
       <!-- ========================================== -->
@@ -286,17 +308,6 @@
 
         <div class="toggle-row">
           <div>
-            <h4>In stock status</h4>
-            <p>If toggled off, customers will see "Sold Out".</p>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="prod-instock" checked aria-label="In stock">
-            <span class="switch-track"></span>
-          </label>
-        </div>
-
-        <div class="toggle-row">
-          <div>
             <h4>Enable variants</h4>
             <p>Turn on if this product comes in sizes, colors, or types.</p>
           </div>
@@ -313,7 +324,7 @@
             &mdash; use a negative number for a discount.
           </p>
           <div class="variant-head" aria-hidden="true">
-            <span>Size</span><span>Color</span><span>Type</span><span>Stock</span><span>Price +/-</span><span></span>
+            <span>Size</span><span>Color</span><span>Type</span><span>Stock (managed separately)</span><span>Price +/-</span><span></span>
           </div>
           <div id="variant-rows" class="variant-rows"></div>
           <button type="button" id="add-variant-btn" class="btn-outline">Add variant</button>
