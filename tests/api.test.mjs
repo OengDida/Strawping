@@ -736,7 +736,7 @@ test("the public products API returns variants and hides products with broken va
     VARIANT_TEE,
     { ...VARIANT_TEE, id: "prod-broken", variants: [] },
     { ...VARIANT_TEE, id: "prod-dupe", variants: [VARIANT_TEE.variants[0], { ...VARIANT_TEE.variants[0], id: "var-other" }] },
-    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true, stock: 5 }
+    { id: "prod-mug", name: "Mug", category: "Home", price: 3, image: "", description: "", inStock: true, stock: 5, featured: true }
   ]);
   const response = await handler(event("/products"));
   const products = JSON.parse(response.body).products;
@@ -744,6 +744,7 @@ test("the public products API returns variants and hides products with broken va
   assert.equal(products[0].hasVariants, true);
   assert.equal(products[0].variants.length, 3);
   assert.equal("variants" in products[1], false);
+  assert.equal(products[1].featured, true);
 });
 
 test("admins can save a product with variants and the server rejects mixed variant columns", async () => {
@@ -762,6 +763,22 @@ test("admins can save a product with variants and the server rejects mixed varia
   const ok = await handler(event("/products", "PUT", { csrfToken: session.csrfToken, products: [VARIANT_TEE] }, headers));
   assert.equal(ok.statusCode, 200);
   assert.equal(written.value[0].variants[1].priceAdjustment, 2.5);
+
+  const featured = await handler(event("/products", "PUT", {
+    csrfToken: session.csrfToken,
+    products: [{ ...VARIANT_TEE, featured: true }]
+  }, headers));
+  assert.equal(featured.statusCode, 200);
+  assert.equal(written.value[0].featured, true);
+
+  const duplicateFeatured = await handler(event("/products", "PUT", {
+    csrfToken: session.csrfToken,
+    products: [
+      { ...VARIANT_TEE, featured: true },
+      { ...VARIANT_TEE, id: "prod-tee-two", featured: true }
+    ]
+  }, headers));
+  assert.equal(duplicateFeatured.statusCode, 400);
 
   // "color" is filled for one variant but empty for another.
   const mixed = { ...VARIANT_TEE, variants: [VARIANT_TEE.variants[0], { ...VARIANT_TEE.variants[1], color: "" }] };

@@ -87,6 +87,7 @@ export default function App() {
     return list;
   }, [products, category, sort]);
   const cartCount = cart.reduce((total, item) => total + item.qty, 0);
+  const featuredProduct = products.find((product) => product.featured === true) || products[0] || null;
   const cartQtyFor = useCallback((product, variantId = null) => (
     cart.find((line) => line.id === product.id && (line.variantId || null) === (variantId || null))?.qty || 0
   ), [cart]);
@@ -141,7 +142,7 @@ export default function App() {
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
     <Navbar solid={pastHero} cartCount={cartCount} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} />
     <main>
-      <Hero ref={heroRef} onExplore={scrollToShop} featured={products[0]} onFeatured={() => products[0] && setQuickView(products[0])} />
+      <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
       <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
         <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
         <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />

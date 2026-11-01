@@ -496,6 +496,7 @@ function normalizeProduct(value) {
   if (value.inStock !== undefined && typeof value.inStock !== "boolean") return null;
   if (value.stock !== undefined && (!Number.isInteger(value.stock) || value.stock < 0 || value.stock > 1000000)) return null;
   if (value.hasVariants !== undefined && typeof value.hasVariants !== "boolean") return null;
+  if (value.featured !== undefined && typeof value.featured !== "boolean") return null;
 
   const product = {
     id,
@@ -509,6 +510,7 @@ function normalizeProduct(value) {
     inStock: value.inStock !== false,
     stock: Number.isInteger(value.stock) ? value.stock : 0
   };
+  if (value.featured === true) product.featured = true;
 
   if (value.hasVariants === true) {
     const variants = normalizeVariants(value.variants, priceCents);
@@ -908,12 +910,16 @@ export async function handler(event, context = {}) {
 
       const products = [];
       const ids = new Set();
+      let hasFeaturedProduct = false;
       for (const value of body.products) {
         const product = normalizeProduct(value);
         if (!product || ids.has(product.id)) {
           return json(400, { error: "Invalid or duplicate product record" });
         }
-        ids.add(product.id);
+        if (product.featured) {
+          if (hasFeaturedProduct) return json(400, { error: "Only one featured product can be selected" });
+          hasFeaturedProduct = true;
+        }
         ids.add(product.id);
         products.push(product);
       }

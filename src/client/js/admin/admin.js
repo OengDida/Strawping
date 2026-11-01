@@ -484,6 +484,7 @@ function renderAdminProducts() {
         ${escapeHtml(currency)}${Number(prod.price).toFixed(2)}
       </td>
       <td class="cell-actions">
+        <button data-action="toggle-featured" data-id="${escapeHtml(prod.id)}" class="link-btn featured-action${prod.featured === true ? ' is-featured' : ''}" type="button" aria-pressed="${prod.featured === true}" aria-label="${prod.featured === true ? `Remove ${escapeHtml(prod.name)} as the featured homepage product` : `Feature ${escapeHtml(prod.name)} on the homepage`}">${prod.featured === true ? 'Featured' : 'Feature'}</button>
         <button data-action="edit-product" data-id="${escapeHtml(prod.id)}" class="link-btn" type="button" aria-label="Edit ${escapeHtml(prod.name)}">Edit</button>
         <button data-action="delete-product" data-id="${escapeHtml(prod.id)}" class="link-btn link-danger" type="button" aria-label="Delete ${escapeHtml(prod.name)}">Delete</button>
       </td>
@@ -518,6 +519,16 @@ async function deleteProduct(id) {
     await updateServerSyncStatus();
     showToast("Product removed from server automatically.");
   }
+}
+
+async function toggleFeaturedProduct(id) {
+  const product = StoreDB.getProducts().find(item => item.id === id);
+  if (!product) return;
+  const featured = product.featured !== true;
+  await StoreDB.updateProduct(id, { featured });
+  renderAdminProducts();
+  await updateServerSyncStatus();
+  showToast(featured ? `${product.name} is featured on the homepage.` : "Homepage featured product cleared.");
 }
 
 
@@ -951,6 +962,9 @@ function setupAdminActionDelegation() {
       switch (action) {
         case "edit-product":
           await editProduct(id);
+          break;
+        case "toggle-featured":
+          await toggleFeaturedProduct(id);
           break;
         case "delete-product":
           if (confirm("Delete this product?")) {

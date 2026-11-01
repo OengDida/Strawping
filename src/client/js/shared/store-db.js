@@ -89,8 +89,8 @@ class StoreDB {
     if(typeof result.url!=="string"||!result.url) throw new Error("Image upload did not return a URL.");
     return result.url;
   }
-  static async addProduct(product){const p={...product,id:"prod-"+crypto.randomUUID(),inStock:product.inStock!==false};const list=[p,...this.getProducts()];await this.saveProducts(list);return p}
-  static async updateProduct(id,fields){const list=this.getProducts();const i=list.findIndex(p=>p.id===id);if(i<0)return null;list[i]={...list[i],...fields};await this.saveProducts(list);return list[i]}
+  static async addProduct(product){const p={...product,id:"prod-"+crypto.randomUUID(),inStock:product.inStock!==false};const existing=this.getProducts().map(item=>p.featured===true?{...item,featured:false}:item);const list=[p,...existing];await this.saveProducts(list);return p}
+  static async updateProduct(id,fields){const list=this.getProducts();const i=list.findIndex(p=>p.id===id);if(i<0)return null;if(fields.featured===true)list.forEach((product,index)=>{if(product.id!==id)list[index]={...product,featured:false}});list[i]={...list[i],...fields};await this.saveProducts(list);return list[i]}
   static async deleteProduct(id){await this.saveProducts(this.getProducts().filter(p=>p.id!==id));return true}
   static async getOrders(){try{const r=await this.request("orders");return Array.isArray(r.orders)?r.orders:[]}catch{return []}}
   static async syncOrdersFromServer(){try{const r=await this.request("orders");return r.orders||[]}catch(e){console.warn(e.message);return []}}
