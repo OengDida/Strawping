@@ -38,6 +38,7 @@ async function checkAuth() {
     adminApp.classList.remove("hidden");
     loadAllAdminData();
   } else {
+    StoreDB.stopCatalogPolling();
     authGate.classList.remove("hidden");
     adminApp.classList.add("hidden");
   }
@@ -106,10 +107,22 @@ function setupTabs() {
 }
 
 async function loadAllAdminData() {
-  await StoreDB.initAdminSync();
-  await renderAdminProducts();
-  await renderAdminOrders();
+  // Show the last successful catalog immediately. Network sync then refreshes
+  // the cache instead of blocking the first render of the admin panel.
+  renderAdminProducts();
+  renderAdminOrders();
   loadCustomizerSettings();
+  await StoreDB.initAdminSync();
+  renderAdminProducts();
+  renderAdminOrders();
+  loadCustomizerSettings();
+  StoreDB.startCatalogPolling(() => {
+    renderAdminProducts();
+    const stockPane = document.getElementById("tab-content-stock");
+    if (stockPane && !stockPane.classList.contains("hidden") && !hasUnsavedInventoryChanges()) {
+      void renderAdminStock();
+    }
+  });
   await updateServerSyncStatus();
 }
 

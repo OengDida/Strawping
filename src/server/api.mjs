@@ -762,10 +762,18 @@ export async function handler(event, context = {}) {
       });
     }
 
+    if (resource === "catalog-version" && method === "GET") {
+      const rows = await db("store_data?key=eq.products&select=updated_at", { method: "GET" });
+      return json(200, { updatedAt: rows?.[0]?.updated_at || null });
+    }
+
     if (resource === "products" && method === "GET") {
-      const rows = await db("store_data?key=eq.products&select=value", { method: "GET" });
+      const rows = await db("store_data?key=eq.products&select=value,updated_at", { method: "GET" });
       const stored = Array.isArray(rows?.[0]?.value) ? rows[0].value : [];
-      return json(200, { products: stored.map(normalizeProduct).filter(Boolean) });
+      return json(200, {
+        products: stored.map(normalizeProduct).filter(Boolean),
+        updatedAt: rows?.[0]?.updated_at || null
+      });
     }
 
     if (resource === "settings" && method === "GET") {

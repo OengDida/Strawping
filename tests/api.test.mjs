@@ -137,7 +137,7 @@ test("settings and products are readable through the public storefront API", asy
         description: "Cup",
         inStock: true,
         ignoredAdminField: "not returned"
-      }] }]);
+      }], updated_at: "2026-11-03T00:00:00.000Z" }]);
     }
     if (String(url).includes("key=eq.settings")) {
       return reply([{ value: { storeName: "Strawping", currency: "$", secret: "not returned" } }]);
@@ -147,6 +147,7 @@ test("settings and products are readable through the public storefront API", asy
 
   const products = await handler(event("/products"));
   assert.equal(products.statusCode, 200);
+  assert.equal(JSON.parse(products.body).updatedAt, "2026-11-03T00:00:00.000Z");
   assert.deepEqual(JSON.parse(products.body).products, [{
     id: "prod-mug",
     name: "Mug",
@@ -170,6 +171,17 @@ test("settings and products are readable through the public storefront API", asy
     currency: "$",
     contactTelegram: "@didaoeng"
   });
+});
+
+test("catalog version endpoint exposes only the public products update timestamp", async () => {
+  globalThis.fetch = async url => {
+    assert.match(String(url), /store_data\?key=eq\.products&select=updated_at$/);
+    return reply([{ updated_at: "2026-11-03T00:00:00.000Z" }]);
+  };
+
+  const response = await handler(event("/catalog-version"));
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body), { updatedAt: "2026-11-03T00:00:00.000Z" });
 });
 
 test("CSRF validation requires the token from a verified session and matching header", async () => {
@@ -521,7 +533,7 @@ test("Vercel adapter forwards /api/products to the shared API handler", async ()
       description: "",
       inStock: true,
       stock: 0
-    }] }]);
+    }], updated_at: "2026-11-03T00:00:00.000Z" }]);
   };
 
   const response = await vercelHandler.fetch(new Request(
@@ -542,7 +554,8 @@ test("Vercel adapter forwards /api/products to the shared API handler", async ()
       description: "",
       inStock: true,
       stock: 0
-    }]
+    }],
+    updatedAt: "2026-11-03T00:00:00.000Z"
   });
 });
 

@@ -13,6 +13,13 @@ class StoreDB {
   // Product catalog writes are serialized because the API persists the full list.
   static productWriteQueue = Promise.resolve();
   static productRevision = 0;
+  static pendingProductWrites = 0;
+  static catalogVersion = null;
+  static catalogPollTimer = null;
+  static catalogPollInFlight = false;
+  static catalogPollGeneration = 0;
+  static catalogPollVisibilityHandler = null;
+  static catalogPollWarningShown = false;
   // Keep admin orders in memory only: order records contain customer PII.
   static adminOrders = [];
   static ordersLoaded = false;
@@ -68,6 +75,7 @@ class StoreDB {
         localStorage.setItem(this.PRODUCTS_KEY,JSON.stringify(p.products));
         products=p.products;
       }
+      if(typeof p.updatedAt==="string") this.catalogVersion=p.updatedAt;
       if(s.settings&&typeof s.settings==="object"){
         settings={...DEFAULT_SETTINGS,...s.settings};
         localStorage.setItem(this.SETTINGS_KEY,JSON.stringify(settings));
@@ -75,7 +83,7 @@ class StoreDB {
       this.lastSyncOk=true; this.lastSyncError=null;
       this.lastSyncProducts=products; this.lastSyncSettings=settings;
       window.dispatchEvent(new CustomEvent("strawping-sync",{detail:{ok:true,products,settings}}));
-      return {ok:true,products,settings};
+      return {ok:true,products,settings,catalogVersion:this.catalogVersion};
     } catch(e){
       const message=e.message||"Request failed";
       this.lastSyncOk=false; this.lastSyncError=message;
@@ -86,7 +94,56 @@ class StoreDB {
       return {ok:false,products:null,settings:null,error:message};
     }
   }
-  static async initAdminSync(){await this.syncData(); if(await this.isAuthenticated()) await this.syncOrdersFromServer();}
+  static async initAdminSync(){
+    const dataSync=this.syncData();
+    const ordersSync=(async()=>{if(await this.isAuthenticated()) return this.syncOrdersFromServer();return null})();
+    const [dataResult]=await Promise.all([dataSync,ordersSync]);
+    return dataResult;
+  }
+  static stopCatalogPolling(){
+    this.catalogPollGeneration++;
+    if(this.catalogPollTimer){clearInterval(this.catalogPollTimer);this.catalogPollTimer=null;}
+    if(this.catalogPollVisibilityHandler){
+      document.removeEventListener("visibilitychange",this.catalogPollVisibilityHandler);
+      this.catalogPollVisibilityHandler=null;
+    }
+    this.catalogPollInFlight=false;
+  }
+  static startCatalogPolling(onUpdate,intervalMs=5000){
+    this.stopCatalogPolling();
+    const generation=this.catalogPollGeneration;
+    this.catalogPollWarningShown=false;
+    const poll=async()=>{
+      if(generation!==this.catalogPollGeneration||document.visibilityState==="hidden"||this.catalogPollInFlight)return;
+      this.catalogPollInFlight=true;
+      try{
+        const result=await this.request("catalog-version");
+        if(generation!==this.catalogPollGeneration)return;
+        const nextVersion=typeof result.updatedAt==="string"?result.updatedAt:null;
+        if(!nextVersion||!this.catalogVersion){
+          if(nextVersion)this.catalogVersion=nextVersion;
+          return;
+        }
+        if(nextVersion===this.catalogVersion||this.pendingProductWrites>0)return;
+        const synced=await this.syncData();
+        if(generation!==this.catalogPollGeneration||!synced.ok||!Array.isArray(synced.products))return;
+        this.catalogVersion=synced.catalogVersion||nextVersion;
+        onUpdate?.(synced);
+      }catch(error){
+        if(generation===this.catalogPollGeneration&&!this.catalogPollWarningShown){
+          console.warn("Live catalog check failed:",error.message||"Request failed");
+          this.catalogPollWarningShown=true;
+        }
+      }finally{
+        if(generation===this.catalogPollGeneration)this.catalogPollInFlight=false;
+      }
+    };
+    this.catalogPollTimer=setInterval(()=>{void poll();},Math.max(3000,intervalMs));
+    this.catalogPollVisibilityHandler=()=>{
+      if(document.visibilityState==="visible")void poll();
+    };
+    document.addEventListener("visibilitychange",this.catalogPollVisibilityHandler);
+  }
   static async checkServerStatus(){try{await this.request("status");return true}catch{return false}}
   static getProducts(){try{const x=JSON.parse(localStorage.getItem(this.PRODUCTS_KEY)||"null");return Array.isArray(x)?x:DEFAULT_PRODUCTS}catch{return DEFAULT_PRODUCTS}}
   static writeProductsLocally(products){
@@ -94,6 +151,7 @@ class StoreDB {
     this.productRevision++;
   }
   static enqueueCurrentProductsWrite(rollback){
+    this.pendingProductWrites++;
     const request = this.productWriteQueue.then(async () => {
       // Read at execution time so later optimistic edits are not lost in a queued write.
       const products = this.getProducts();
@@ -111,6 +169,8 @@ class StoreDB {
     const settled = request.catch(error => {
       rollback?.();
       throw error;
+    }).finally(() => {
+      this.pendingProductWrites=Math.max(0,this.pendingProductWrites-1);
     });
     // Keep later writes running even when this one fails.
     this.productWriteQueue = settled.catch(() => {});
