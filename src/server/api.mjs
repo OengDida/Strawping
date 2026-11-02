@@ -34,6 +34,7 @@ const MIN_ADMIN_PASSWORD_LENGTH = 12;
 const PRODUCT_IMAGE_BUCKET = "product-images";
 const MAX_PRODUCT_IMAGE_BYTES = 1_500_000;
 const MAX_IMAGE_UPLOAD_REQUEST_BYTES = 2_100_000;
+const SUPABASE_USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function env(name) {
   const value = process.env[name];
@@ -520,23 +521,75 @@ function normalizeProduct(value) {
   return product;
 }
 
-function normalizeCustomer(value) {
+function normalizeCustomer(value, { nameRequired = true, emailRequired = true } = {}) {
   if (!isRecord(value)) return null;
-  const name = cleanLine(value.name, 120, true);
+  const name = cleanLine(value.name, 120, nameRequired);
   const phone = cleanLine(value.phone, 40, true);
-  const email = cleanLine(value.email, 254, true);
+  const email = cleanLine(value.email ?? "", 254, emailRequired);
   const telegram = cleanLine(value.telegram ?? "", 80);
   const address = cleanLine(value.address ?? "Not provided (Online / Self-Pickup)", 500);
   const notes = cleanLine(value.notes ?? "", 1000);
+  const emailValid = email === "" && !emailRequired || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email || "");
 
   if (
     name === null || phone === null || email === null ||
     telegram === null || address === null || notes === null ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
+    !emailValid
   ) {
     return null;
   }
   return { name, phone, email, telegram, address, notes };
+}
+
+function requestHeader(event, name) {
+  const headers = event.headers || {};
+  const target = name.toLowerCase();
+  const key = Object.keys(headers).find((candidate) => candidate.toLowerCase() === target);
+  const value = key ? headers[key] : "";
+  return Array.isArray(value) ? value[0] || "" : (typeof value === "string" ? value : "");
+}
+
+// Verify customer identity against Supabase Auth. Never accept a user_id from JSON.
+async function verifyCustomerAccessToken(event) {
+  const authorization = requestHeader(event, "authorization");
+  if (!authorization) return null; // guest checkout remains supported
+  const match = authorization.match(/^Bearer\s+([A-Za-z0-9._~-]{20,8192})$/i);
+  if (!match) throw Object.assign(new Error("Invalid customer session"), { status: 401 });
+
+  const supabaseUrl = env("SUPABASE_URL").replace(/\/+$/, "");
+  const publicKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+  if (!publicKey) {
+    throw Object.assign(new Error("Customer authentication is not configured on the server"), { status: 503 });
+  }
+
+  let response;
+  try {
+    response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "GET",
+      headers: {
+        apikey: publicKey,
+        authorization: `Bearer ${match[1]}`
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+  } catch {
+    throw Object.assign(new Error("Could not verify customer session"), { status: 503 });
+  }
+  if (!response.ok) throw Object.assign(new Error("Customer session expired. Please sign in again."), { status: 401 });
+  const user = await response.json().catch(() => null);
+  if (!isRecord(user) || typeof user.id !== "string" || !SUPABASE_USER_ID_PATTERN.test(user.id)) {
+    throw Object.assign(new Error("Invalid customer session"), { status: 401 });
+  }
+  return user;
+}
+
+async function loadCustomerProfile(userId) {
+  if (!SUPABASE_USER_ID_PATTERN.test(userId)) return null;
+  const rows = await db(
+    `profiles?id=eq.${encodeURIComponent(userId)}&select=id,username,display_name`,
+    { method: "GET" }
+  );
+  return Array.isArray(rows) ? rows[0] || null : null;
 }
 
 function parseBody(event, maxBytes = 100000) {
@@ -554,10 +607,14 @@ function parseBody(event, maxBytes = 100000) {
   }
 }
 
-function formatOrderTelegramMessage(order) {
+function formatOrderTelegramMessage(order, profile = null) {
   const customer = order.customer;
+  const username = typeof profile?.username === "string"
+    ? profile.username.replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 30)
+    : "";
   const lines = [
     `🛒 New Strawping order #${order.id}`,
+    username ? `New order from @${username} / ${customer.name}!` : `New order from ${customer.name}!`,
     `Customer: ${customer.name}`,
     `Phone: ${customer.phone}`,
     customer.telegram ? `Telegram: ${customer.telegram}` : "",
@@ -719,16 +776,43 @@ export async function handler(event, context = {}) {
     if (resource === "orders" && method === "GET") {
       const session = await verifyAdminSession(event);
       if (!session) return json(401, { error: "Unauthorized" });
-      const orders = await db("store_orders?select=*&order=createdAt.desc&limit=500", { method: "GET" });
+      const orders = await db(
+        "store_orders?select=*,profile:profiles!store_orders_user_id_fkey(username,display_name)&order=createdAt.desc&limit=500",
+        { method: "GET" }
+      );
       return json(200, { orders: orders || [] });
     }
 
     if (resource === "orders" && method === "POST") {
       await rateLimit(event, context, "create-order", 5, 900);
+      const customerAuth = await verifyCustomerAccessToken(event);
       const body = parseBody(event);
       if (!isRecord(body)) return json(400, { error: "Invalid order" });
-      const customer = normalizeCustomer(body.customer);
-      if (!customer) return json(400, { error: "Enter a valid name, phone number, and email address." });
+      const customer = normalizeCustomer(body.customer, {
+        nameRequired: !customerAuth,
+        emailRequired: !customerAuth
+      });
+      if (!customer) return json(400, {
+        error: customerAuth
+          ? "Enter your phone number and a valid email address if provided."
+          : "Enter a valid name, phone number, and email address."
+      });
+      let customerProfile = null;
+      if (customerAuth) {
+        customerProfile = await loadCustomerProfile(customerAuth.id);
+        if (!customerProfile) {
+          return json(503, { error: "Your account profile is not ready. Please try again shortly." });
+        }
+        const metadata = isRecord(customerAuth.user_metadata) ? customerAuth.user_metadata : {};
+        const accountName = cleanLine(
+          customerProfile.display_name || metadata.full_name || metadata.name || "",
+          120,
+          true
+        );
+        if (!accountName) return json(400, { error: "Add a display name in account settings before ordering." });
+        // The server profile, not the editable request payload, is authoritative for signed-in orders.
+        customer.name = accountName;
+      }
       if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50) {
         return json(400, { error: "Order must contain between 1 and 50 items." });
       }
@@ -807,13 +891,18 @@ export async function handler(event, context = {}) {
       };
       // One PostgreSQL transaction validates and deducts every line, then inserts the order.
       // No browser-side or preflight stock read is trusted for the final decision.
-      const created = await db("rpc/place_store_order", {
-        method: "POST",
-        body: JSON.stringify({ p_order: order })
-      });
+      const created = customerAuth
+        ? await db("rpc/place_store_order_for_user", {
+            method: "POST",
+            body: JSON.stringify({ p_order: order, p_user_id: customerAuth.id })
+          })
+        : await db("rpc/place_store_order", {
+            method: "POST",
+            body: JSON.stringify({ p_order: order })
+          });
       if (!created || typeof created !== "object") return json(500, { error: "Failed to create order" });
 
-      const telegramSent = await sendTelegramMessage(formatOrderTelegramMessage(created));
+      const telegramSent = await sendTelegramMessage(formatOrderTelegramMessage(created, customerProfile));
       return json(201, { order: created, telegramSent });
     }
 

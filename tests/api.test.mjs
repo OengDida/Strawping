@@ -436,6 +436,63 @@ test("order totals and item details are derived from the server catalog", async 
   }]);
 });
 
+test("authenticated orders use the verified profile and allow an omitted email", async () => {
+  const userId = "4a9f512a-7d49-4f2b-8c4d-9df4b3a07c1a";
+  process.env.SUPABASE_ANON_KEY = "test-public-key";
+  let savedOrder;
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/rpc/consume_rate_limit")) return reply(true);
+    if (requestUrl.endsWith("/auth/v1/user")) {
+      assert.equal(options.headers.apikey, "test-public-key");
+      assert.equal(options.headers.authorization, "Bearer test-customer-access-token");
+      return reply({ id: userId, user_metadata: { full_name: "Untrusted metadata" } });
+    }
+    if (requestUrl.includes("/rest/v1/profiles?id=eq.")) {
+      return reply([{ id: userId, username: "jordan_rider", display_name: "Jordan Rider" }]);
+    }
+    if (requestUrl.includes("key=eq.products")) {
+      return reply([{ value: [{
+        id: "prod-mug",
+        name: "Mug",
+        category: "Home",
+        price: 3.5,
+        image: "",
+        description: "",
+        inStock: true,
+        stock: 10
+      }] }]);
+    }
+    if (requestUrl.endsWith("/rest/v1/rpc/place_store_order_for_user") && options.method === "POST") {
+      const params = JSON.parse(options.body);
+      assert.equal(params.p_user_id, userId);
+      savedOrder = params.p_order;
+      return reply({ ...savedOrder, user_id: userId });
+    }
+    throw new Error(`Unexpected request: ${requestUrl}`);
+  };
+
+  const response = await handler(
+    {
+      ...event("/orders", "POST", {
+        customer: {
+          name: "Forged checkout name",
+          phone: "123456",
+          email: "",
+          address: "One Street"
+        },
+        items: [{ id: "prod-mug", quantity: 1 }]
+      }, { authorization: "Bearer test-customer-access-token" })
+    },
+    { ip: "203.0.113.12" }
+  );
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(savedOrder.customer.name, "Jordan Rider");
+  assert.equal(savedOrder.customer.email, "");
+  assert.equal(JSON.parse(response.body).order.user_id, userId);
+});
+
 test("order creation fails closed when the rate limiter denies the request", async () => {
   globalThis.fetch = async url => {
     assert.match(String(url), /rpc\/consume_rate_limit$/);

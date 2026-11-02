@@ -820,6 +820,9 @@ function renderAdminOrders() {
   emptyState.classList.add("hidden");
   container.innerHTML = orders.map(order => {
     const customer = order && order.customer && typeof order.customer === "object" ? order.customer : {};
+    const profile = order && order.profile && typeof order.profile === "object" ? order.profile : {};
+    const profileUsername = typeof profile.username === "string" ? profile.username.replace(/^@/, "").slice(0, 30) : "";
+    const profileName = typeof profile.display_name === "string" ? profile.display_name : "";
     const rawTelegram = typeof customer.telegram === "string" ? customer.telegram : "";
     const cleanTg = rawTelegram.replace(/^@/, "").trim().replace(/[^A-Za-z0-9_]/g, "").slice(0, 80);
     const telegramLink = cleanTg ? `https://t.me/${escapeHtml(cleanTg)}` : null;
@@ -858,6 +861,8 @@ function renderAdminOrders() {
         <div class="order-grid">
           <div class="order-contact">
             <span class="who">${escapeHtml(customer.name)}</span>
+            ${profileName ? `<span class="muted-note">Profile: ${escapeHtml(profileName)}</span>` : ""}
+            ${profileUsername ? `<span class="muted-note">Account: @${escapeHtml(profileUsername)}</span>` : ""}
             <a href="tel:${escapeHtml(customer.phone)}">${escapeHtml(customer.phone)}</a>
             <a href="mailto:${escapeHtml(customer.email)}">${escapeHtml(customer.email)}</a>
 

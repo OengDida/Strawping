@@ -31,6 +31,7 @@ function friendlyError(error) {
 
 export default function AuthModal({ open, onClose, onAuthenticated }) {
   const [mode, setMode] = useState('login');
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState('');
@@ -55,7 +56,7 @@ export default function AuthModal({ open, onClose, onAuthenticated }) {
         await signInWithPassword(email.trim(), password);
         onAuthenticated?.();
       } else {
-        const data = await signUp(email.trim(), password);
+        const data = await signUp(email.trim(), password, displayName);
         if (data.session) onAuthenticated?.();
         else setNotice('Account created. Check your inbox for a confirmation link, then log in.');
       }
@@ -122,6 +123,20 @@ export default function AuthModal({ open, onClose, onAuthenticated }) {
         </div>
 
         <form onSubmit={submitEmail} className="space-y-4">
+          {mode === 'signup' && <label className="block text-xs font-medium text-charcoal/75">
+            Full name
+            <input
+              type="text"
+              name="name"
+              autoComplete="name"
+              required
+              maxLength={120}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder="Your full name"
+              className="mt-1.5 h-12 w-full rounded-xl border border-ink/10 bg-surface/60 px-3.5 text-sm text-ink outline-none transition placeholder:text-mute/70 focus:border-accent/70 focus:ring-2 focus:ring-accent/15"
+            />
+          </label>}
           <label className="block text-xs font-medium text-charcoal/75">
             Email
             <input

@@ -13,6 +13,10 @@ import Footer from '../features/layout/components/Footer.jsx';
 import AuthModal from '../features/auth/components/AuthModal.jsx';
 import useAuthSession from '../features/auth/hooks/useAuthSession.js';
 import { logout } from '../features/auth/supabase.js';
+import AccountSettingsModal from '../features/account/components/AccountSettingsModal.jsx';
+import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js';
+import { addMyWishlistItem, loadMyWishlist, removeMyWishlistItem } from '../features/account/accountService.js';
+import WishlistDrawer from '../features/wishlist/components/WishlistDrawer.jsx';
 import { loadStore } from '../shared/services/api.js';
 import { mapProduct, variantPrice } from '../features/catalog/model.js';
 import { saveJSON, useScrollLock, useTheme } from '../shared/hooks/index.js';
@@ -55,7 +59,15 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
-  const { user } = useAuthSession();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [wishlistOpen, setWishlistOpen] = useState(false);
+  const [wishlistAfterAuth, setWishlistAfterAuth] = useState(false);
+  const [pendingWishlistProduct, setPendingWishlistProduct] = useState(() => {
+    try { return sessionStorage.getItem('strawping.pendingWishlist') || null; } catch { return null; }
+  });
+  const [wishlistIds, setWishlistIds] = useState([]);
+  const { user, session, loading: authLoading } = useAuthSession();
+  const { profile, setProfile, reload: reloadProfile } = useCustomerProfile(user?.id);
 
   useEffect(() => {
     let alive = true;
@@ -69,6 +81,36 @@ export default function App() {
   }, []);
   useEffect(() => { saveJSON('strawping.cart', cart); }, [cart]);
   useEffect(() => {
+    if (authLoading) return undefined;
+    if (!user) {
+      setWishlistIds([]);
+      return undefined;
+    }
+    let active = true;
+    loadMyWishlist(user.id)
+      .then((ids) => { if (active) setWishlistIds(ids); })
+      .catch((error) => {
+        if (!active) return;
+        setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not load your wishlist.' });
+      });
+    return () => { active = false; };
+  }, [authLoading, user?.id]);
+  useEffect(() => {
+    if (!user) return;
+    if (wishlistAfterAuth) {
+      setWishlistOpen(true);
+      setWishlistAfterAuth(false);
+    }
+    if (pendingWishlistProduct) {
+      const productId = pendingWishlistProduct;
+      setPendingWishlistProduct(null);
+      try { sessionStorage.removeItem('strawping.pendingWishlist'); } catch {}
+      addMyWishlistItem(productId)
+        .then(() => setWishlistIds((current) => current.includes(productId) ? current : [productId, ...current]))
+        .catch((error) => setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not save that item.' }));
+    }
+  }, [user?.id, wishlistAfterAuth, pendingWishlistProduct]);
+  useEffect(() => {
     const onScroll = () => setPastHero(window.scrollY > (heroRef.current?.offsetHeight ?? 600) - 96);
     onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', onScroll);
     return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
@@ -81,7 +123,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
-  useScrollLock(Boolean(quickView || cartOpen || searchOpen));
+  useScrollLock(Boolean(quickView || cartOpen || searchOpen || wishlistOpen));
 
   const categories = useMemo(() => ['All', ...new Set(products.map((p) => p.category).filter(Boolean))], [products]);
   const counts = useMemo(() => Object.fromEntries(categories.map((name) => [name, name === 'All' ? products.length : products.filter((p) => p.category === name).length])), [categories, products]);
@@ -136,6 +178,35 @@ export default function App() {
       return false;
     }
   }, [cartQtyFor]);
+  const toggleWishlist = useCallback(async (product) => {
+    if (!user) {
+      try { sessionStorage.setItem('strawping.pendingWishlist', product.id); } catch {}
+      setPendingWishlistProduct(product.id);
+      setAuthOpen(true);
+      return;
+    }
+    const productId = product.id;
+    const wasSaved = wishlistIds.includes(productId);
+    setWishlistIds((current) => wasSaved
+      ? current.filter((id) => id !== productId)
+      : [productId, ...current]);
+    try {
+      if (wasSaved) await removeMyWishlistItem(productId);
+      else await addMyWishlistItem(productId);
+    } catch (error) {
+      setWishlistIds((current) => wasSaved
+        ? (current.includes(productId) ? current : [productId, ...current])
+        : current.filter((id) => id !== productId));
+      setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not update your wishlist.' });
+    }
+  }, [user?.id, wishlistIds]);
+  const openWishlist = useCallback(() => {
+    if (user) setWishlistOpen(true);
+    else {
+      setWishlistAfterAuth(true);
+      setAuthOpen(true);
+    }
+  }, [user?.id]);
   const scrollToShop = useCallback(() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), []);
   const cartLines = cart.map((item) => {
     const product = products.find((p) => p.id === item.id);
@@ -145,21 +216,23 @@ export default function App() {
 
   return <div className="min-h-screen overflow-x-clip">
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
-    <Navbar solid={pastHero} cartCount={cartCount} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
+    <Navbar solid={pastHero} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
     <main>
       <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
       <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
         <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
-        <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
+        <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
         {products.length === 0 && <p className="py-16 text-center text-sm text-mute">No products are available yet. Add products through the existing admin panel.</p>}
       </section>
       <About />
     </main>
     <Footer />
     <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} />
-    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} />
+    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} />
     <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} />
+    <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} products={products} productIds={wishlistIds} onRemove={(id) => toggleWishlist({ id })} onAdd={(p) => { setWishlistOpen(false); if (p.hasVariants) setQuickView(p); else addToCart(p, null); }} />
     <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthenticated={() => setAuthOpen(false)} />
+    <AccountSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} user={user} profile={profile} onProfileUpdated={(nextProfile) => { setProfile(nextProfile); reloadProfile(); }} />
     <Toast toast={toast} onDismiss={() => setToast(null)} onView={() => { setToast(null); setCartOpen(true); }} />
     <BackToTop visible={pastHero && !cartOpen} />
   </div>;

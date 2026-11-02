@@ -1,10 +1,10 @@
 import { forwardRef } from 'react';
 import { motion } from 'framer-motion';
-import { Eye, Plus } from 'lucide-react';
+import { Eye, Plus, Heart } from 'lucide-react';
 import { ease } from '../../../shared/motion.js';
 import { formatPrice } from '../model.js';
 
-const ProductCard = forwardRef(function ProductCard({ product, index, onQuickView, onAdd, canAdd }, ref) {
+const ProductCard = forwardRef(function ProductCard({ product, index, onQuickView, onAdd, canAdd, isWishlisted, onToggleWishlist }, ref) {
   const addEnabled = canAdd ? canAdd(product) : product.inStock;
   return (
     <motion.li
@@ -37,8 +37,17 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
         <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[1.75rem] ring-1 ring-inset ring-white/0 transition duration-500 group-hover:ring-white/50 dark:group-hover:ring-white/15" />
 
         {!product.inStock && (
-          <span className="pointer-events-none absolute right-3 top-3 rounded-full bg-black/75 px-3 py-1.5 text-[11px] font-medium text-white">Sold out</span>
+          <span className="pointer-events-none absolute right-3 top-14 rounded-full bg-black/75 px-3 py-1.5 text-[11px] font-medium text-white">Sold out</span>
         )}
+        <button
+          type="button"
+          onClick={() => onToggleWishlist?.(product)}
+          aria-label={`${isWishlisted ? 'Remove' : 'Add'} ${product.name} ${isWishlisted ? 'from' : 'to'} wishlist`}
+          aria-pressed={Boolean(isWishlisted)}
+          className="glass focus-ring absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full transition hover:scale-105"
+        >
+          <Heart className={`h-[18px] w-[18px] ${isWishlisted ? 'fill-accent text-accent' : 'text-ink'}`} strokeWidth={1.8} />
+        </button>
         {product.tag && (
           <span className="glass pointer-events-none absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-medium">
             {product.tag}

@@ -29,6 +29,10 @@ export async function loadStore() {
   }
 }
 
-export async function submitOrder(order) {
-  return request('orders', { method: 'POST', body: JSON.stringify(order) });
+export async function submitOrder(order, accessToken) {
+  return request('orders', {
+    method: 'POST',
+    body: JSON.stringify(order),
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
 }

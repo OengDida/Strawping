@@ -27,11 +27,14 @@ export async function signInWithPassword(email, password) {
   return data;
 }
 
-export async function signUp(email, password) {
+export async function signUp(email, password, displayName = '') {
   const { data, error } = await requireSupabase().auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: window.location.origin },
+    options: {
+      emailRedirectTo: window.location.origin,
+      data: displayName.trim() ? { full_name: displayName.trim() } : {},
+    },
   });
   if (error) throw error;
   return data;
