@@ -10,6 +10,9 @@ import Toast from '../shared/components/Toast.jsx';
 import BackToTop from '../shared/components/BackToTop.jsx';
 import About from '../features/catalog/components/About.jsx';
 import Footer from '../features/layout/components/Footer.jsx';
+import AuthModal from '../features/auth/components/AuthModal.jsx';
+import useAuthSession from '../features/auth/hooks/useAuthSession.js';
+import { logout } from '../features/auth/supabase.js';
 import { loadStore } from '../shared/services/api.js';
 import { mapProduct, variantPrice } from '../features/catalog/model.js';
 import { saveJSON, useScrollLock, useTheme } from '../shared/hooks/index.js';
@@ -51,6 +54,8 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const { user } = useAuthSession();
 
   useEffect(() => {
     let alive = true;
@@ -72,7 +77,7 @@ export default function App() {
     const onKey = (event) => {
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName);
       if ((event.key.toLowerCase() === 'k' && (event.metaKey || event.ctrlKey)) || (event.key === '/' && !typing)) { event.preventDefault(); setSearchOpen(true); }
-      else if (event.key === 'Escape') { setQuickView(null); setCartOpen(false); setSearchOpen(false); }
+      else if (event.key === 'Escape') { setQuickView(null); setCartOpen(false); setSearchOpen(false); setAuthOpen(false); }
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -140,7 +145,7 @@ export default function App() {
 
   return <div className="min-h-screen overflow-x-clip">
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
-    <Navbar solid={pastHero} cartCount={cartCount} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} />
+    <Navbar solid={pastHero} cartCount={cartCount} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
     <main>
       <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
       <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
@@ -154,6 +159,7 @@ export default function App() {
     <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} />
     <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} />
     <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} />
+    <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthenticated={() => setAuthOpen(false)} />
     <Toast toast={toast} onDismiss={() => setToast(null)} onView={() => { setToast(null); setCartOpen(true); }} />
     <BackToTop visible={pastHero && !cartOpen} />
   </div>;

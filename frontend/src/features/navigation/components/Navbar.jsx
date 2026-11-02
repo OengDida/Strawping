@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ShoppingBag, Menu, X } from 'lucide-react';
+import { Search, ShoppingBag, Menu, X, UserRound, LogOut } from 'lucide-react';
 import { ease } from '../../../shared/motion.js';
 import { ThemeToggle, ThemeSwitchRow } from './ThemeToggle.jsx';
 
@@ -35,8 +35,9 @@ function IconButton({ label, onClick, count = 0, children, className = '', expan
   );
 }
 
-export default function Navbar({ solid, cartCount, onCart, onSearch, theme, onToggleTheme }) {
+export default function Navbar({ solid, cartCount, onCart, onSearch, theme, onToggleTheme, user, onAuthClick, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const glassOn = solid || menuOpen;
 
   return (
@@ -82,6 +83,23 @@ export default function Navbar({ solid, cartCount, onCart, onSearch, theme, onTo
           <IconButton label={`Bag, ${cartCount} items`} onClick={onCart} count={cartCount}>
             <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={1.8} />
           </IconButton>
+          <div className="relative">
+            <IconButton
+              label={user ? 'Account menu' : 'Log in or sign up'}
+              expanded={user ? accountOpen : undefined}
+              onClick={() => user ? setAccountOpen((value) => !value) : onAuthClick?.()}
+            >
+              <UserRound className="h-[18px] w-[18px]" strokeWidth={1.8} />
+            </IconButton>
+            {user && accountOpen && (
+              <div className="glass-panel absolute right-0 top-12 z-50 w-64 rounded-2xl p-2">
+                <p className="truncate px-3 py-2 text-xs text-mute">{user.email}</p>
+                <button type="button" onClick={async () => { setAccountOpen(false); await onLogout?.(); }} className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-surface/70">
+                  <LogOut className="h-4 w-4" /> Log out
+                </button>
+              </div>
+            )}
+          </div>
           <IconButton
             label={menuOpen ? 'Close menu' : 'Open menu'}
             expanded={menuOpen}
