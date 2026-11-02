@@ -10,7 +10,7 @@ import { submitOrder } from '../../../shared/services/api.js';
 const emptyForm = { name: '', phone: '', email: '', telegram: '', address: '', notes: '' };
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 
-export default function CartDrawer({ open, onClose, cart, dispatch, user, session, profile }) {
+export default function CartDrawer({ open, onClose, cart, dispatch, user, session, profile, cartLoading = false, cartLoadError = '' }) {
   const [step, setStep] = useState('cart');
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState('');
@@ -78,7 +78,13 @@ export default function CartDrawer({ open, onClose, cart, dispatch, user, sessio
     <Drawer open={open} onClose={onClose} title={step === 'cart' ? 'Your bag' : step === 'details' ? 'Checkout' : 'Order received'} onBack={step === 'details' && !busy ? () => { setStep('cart'); setError(''); } : null} footer={footer}>
       <AnimatePresence mode="wait" initial={false}>
         {step === 'cart' && <motion.div key="cart" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="px-4 py-2 sm:px-5">
-          {!cart.length ? <div className="flex flex-col items-center py-20 text-center"><ShoppingBag className="mb-5 h-8 w-8 text-mute" /><p className="text-lg font-medium">Your bag is empty</p><p className="mt-1 text-sm text-mute">Add a product to get started.</p></div> : cart.map((line) => <div key={line.key} className="flex gap-4 border-b border-ink/[.06] py-4"><img src={line.product.image} alt="" className="h-24 w-20 rounded-2xl bg-stone object-contain" /><div className="flex min-w-0 flex-1 flex-col"><div className="flex justify-between gap-3"><div><p className="text-sm font-medium">{line.product.name}</p><p className="text-xs text-mute">{line.variant ? [line.variant.size, line.variant.color, line.variant.type].filter(Boolean).join(' / ') : 'Standard'}</p></div><p className="text-sm">{formatPrice(line.unitPrice * line.qty)}</p></div><div className="mt-auto flex items-center justify-between pt-3"><Stepper compact max={Math.max(1, line.maxQty)} value={Math.min(line.qty, Math.max(1, line.maxQty))} onChange={(qty) => dispatch({ type: 'qty', key: line.key, qty, maxQty: line.maxQty })} /><button type="button" onClick={() => dispatch({ type: 'remove', key: line.key })} aria-label="Remove item" className="grid h-8 w-8 place-items-center rounded-full text-mute hover:text-accent"><Trash2 className="h-4 w-4" /></button></div></div></div>)}
+          {cartLoading
+            ? <div role="status" className="flex flex-col items-center py-20 text-center"><Loader2 className="mb-4 h-7 w-7 animate-spin text-mute" /><p className="text-sm text-mute">Loading your saved cart…</p></div>
+            : cartLoadError
+              ? <div role="alert" className="py-20 text-center"><p className="text-sm font-medium">Could not load your saved cart.</p><p className="mt-1 text-sm text-mute">Refresh the page and try again.</p></div>
+              : !cart.length
+                ? <div className="flex flex-col items-center py-20 text-center"><ShoppingBag className="mb-5 h-8 w-8 text-mute" /><p className="text-lg font-medium">Your bag is empty</p><p className="mt-1 text-sm text-mute">Add a product to get started.</p></div>
+                : cart.map((line) => <div key={line.key} className="flex gap-4 border-b border-ink/[.06] py-4"><img src={line.product.image} alt="" className="h-24 w-20 rounded-2xl bg-stone object-contain" /><div className="flex min-w-0 flex-1 flex-col"><div className="flex justify-between gap-3"><div><p className="text-sm font-medium">{line.product.name}</p><p className="text-xs text-mute">{line.variant ? [line.variant.size, line.variant.color, line.variant.type].filter(Boolean).join(' / ') : 'Standard'}</p></div><p className="text-sm">{formatPrice(line.unitPrice * line.qty)}</p></div><div className="mt-auto flex items-center justify-between pt-3"><Stepper compact max={Math.max(1, line.maxQty)} value={Math.min(line.qty, Math.max(1, line.maxQty))} onChange={(qty) => dispatch({ type: 'qty', key: line.key, qty, maxQty: line.maxQty })} /><button type="button" onClick={() => dispatch({ type: 'remove', key: line.key })} aria-label="Remove item" className="grid h-8 w-8 place-items-center rounded-full text-mute hover:text-accent"><Trash2 className="h-4 w-4" /></button></div></div></div>)}
         </motion.div>}
         {step === 'details' && <motion.div key="details" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4 p-4 sm:p-5">
           <p className="text-sm text-mute">Pay on delivery. We’ll confirm your order with you.</p>

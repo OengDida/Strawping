@@ -1,4 +1,5 @@
 import { supabase } from '../auth/supabase.js';
+import { serializeCartItems, normalizeCartItems } from '../cart/cartModel.js';
 
 function client() {
   if (!supabase) throw new Error('Supabase is not configured.');
@@ -11,6 +12,30 @@ export async function loadMyProfile(userId) {
     .select('id, username, display_name')
     .eq('id', userId)
     .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function loadMyCart(userId) {
+  const { data, error } = await client()
+    .from('user_carts')
+    .select('items')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return normalizeCartItems(data?.items);
+}
+
+export async function saveMyCart(userId, items) {
+  const { data, error } = await client()
+    .from('user_carts')
+    .upsert({
+      user_id: userId,
+      items: serializeCartItems(items),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id' })
+    .select('user_id')
+    .single();
   if (error) throw error;
   return data;
 }

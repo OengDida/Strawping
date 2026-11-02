@@ -17,11 +17,12 @@ import AccountSettingsModal from '../features/account/components/AccountSettings
 import UsernameSetupModal from '../features/account/components/UsernameSetupModal.jsx';
 import OrderHistoryPage from '../features/account/components/OrderHistoryPage.jsx';
 import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js';
-import { addMyWishlistItem, loadMyWishlist, removeMyWishlistItem } from '../features/account/accountService.js';
+import { addMyWishlistItem, loadMyCart, loadMyWishlist, removeMyWishlistItem, saveMyCart } from '../features/account/accountService.js';
+import { clearGuestCart, mergeCartItems, readGuestCart, saveGuestCart, serializeCartItems } from '../features/cart/cartModel.js';
 import WishlistDrawer from '../features/wishlist/components/WishlistDrawer.jsx';
 import { loadStore } from '../shared/services/api.js';
 import { mapProduct, variantPrice } from '../features/catalog/model.js';
-import { saveJSON, useScrollLock, useTheme } from '../shared/hooks/index.js';
+import { useScrollLock, useTheme } from '../shared/hooks/index.js';
 
 function cartReducer(state, action) {
   switch (action.type) {
@@ -41,10 +42,10 @@ function cartReducer(state, action) {
     case 'qty': return state.map((item) => item.key === action.key ? { ...item, qty: Math.max(1, Math.min(action.maxQty ?? 99, action.qty)) } : item);
     case 'remove': return state.filter((item) => item.key !== action.key);
     case 'clear': return [];
+    case 'replace': return Array.isArray(action.items) ? action.items : [];
     default: return state;
   }
 }
-function readCart() { try { const value = JSON.parse(localStorage.getItem('strawping.cart') || '[]'); return Array.isArray(value) ? value : []; } catch { return []; } }
 
 export default function App() {
   const heroRef = useRef(null);
@@ -56,7 +57,14 @@ export default function App() {
   const [syncError, setSyncError] = useState('');
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState('featured');
-  const [cart, dispatch] = useReducer(cartReducer, undefined, readCart);
+  const [cart, dispatch] = useReducer(cartReducer, []);
+  const [cartScope, setCartScope] = useState(null);
+  const [cartReady, setCartReady] = useState(false);
+  const [cartLoadError, setCartLoadError] = useState('');
+  const cartLoadGeneration = useRef(0);
+  const cartOwnerRef = useRef(null);
+  const cartWriteQueueRef = useRef(Promise.resolve());
+  const cartWriteErrorRef = useRef(false);
   const [quickView, setQuickView] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -73,6 +81,9 @@ export default function App() {
   const { profile, setProfile, loading: profileLoading, error: profileError, loadedForUserId, reload: reloadProfile } = useCustomerProfile(user?.id);
   const isOrderHistory = currentPath === '/account/orders';
   const [usernamePromptOpen, setUsernamePromptOpen] = useState(false);
+  const expectedCartScope = user?.id || 'guest';
+  const cartIsReady = cartReady && cartScope === expectedCartScope;
+  const currentCart = cartIsReady ? cart : [];
 
   useEffect(() => {
     if (!user) {
@@ -130,7 +141,80 @@ export default function App() {
     });
     return () => { alive = false; };
   }, []);
-  useEffect(() => { saveJSON('strawping.cart', cart); }, [cart]);
+  useEffect(() => {
+    if (authLoading) return undefined;
+    const owner = user?.id || 'guest';
+    const generation = ++cartLoadGeneration.current;
+    let active = true;
+    cartOwnerRef.current = owner;
+    setCartReady(false);
+    setCartScope(null);
+    setCartLoadError('');
+
+    const hydrateCart = async () => {
+      try {
+        const items = owner === 'guest'
+          ? readGuestCart()
+          : mergeCartItems(await loadMyCart(owner), readGuestCart());
+        if (!active || generation !== cartLoadGeneration.current) return;
+        dispatch({ type: 'replace', items });
+        setCartScope(owner);
+        setCartReady(true);
+        setCartLoadError('');
+        cartWriteErrorRef.current = false;
+      } catch (error) {
+        if (!active || generation !== cartLoadGeneration.current) return;
+        dispatch({ type: 'replace', items: [] });
+        setCartScope(null);
+        setCartReady(false);
+        setCartLoadError(error.message || 'Could not load your saved cart. Refresh and try again.');
+        setToast({
+          id: Date.now(),
+          type: 'error',
+          message: error.message || 'Could not load your saved cart. Refresh and try again.',
+        });
+      }
+    };
+
+    void hydrateCart();
+    return () => { active = false; };
+  }, [authLoading, user?.id]);
+
+  useEffect(() => {
+    if (!cartIsReady) return undefined;
+    const owner = cartScope;
+    const items = serializeCartItems(currentCart);
+    if (owner === 'guest') {
+      saveGuestCart(items);
+      return undefined;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      const write = cartWriteQueueRef.current
+        .catch(() => {})
+        .then(() => saveMyCart(owner, items));
+      cartWriteQueueRef.current = write;
+      write.then(() => {
+        if (!active || cartOwnerRef.current !== owner) return;
+        clearGuestCart();
+        cartWriteErrorRef.current = false;
+      }).catch((error) => {
+        if (!active || cartOwnerRef.current !== owner || cartWriteErrorRef.current) return;
+        cartWriteErrorRef.current = true;
+        setToast({
+          id: Date.now(),
+          type: 'error',
+          message: error.message || 'Could not sync your cart. Your changes may not be saved.',
+        });
+      });
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [cartIsReady, cartScope, currentCart, expectedCartScope]);
   useEffect(() => {
     if (authLoading) return undefined;
     if (!user) {
@@ -184,11 +268,11 @@ export default function App() {
     if (sort === 'high') list.sort((a, b) => b.price - a.price);
     return list;
   }, [products, category, sort]);
-  const cartCount = cart.reduce((total, item) => total + item.qty, 0);
+  const cartCount = currentCart.reduce((total, item) => total + item.qty, 0);
   const featuredProduct = products.find((product) => product.featured === true) || products[0] || null;
   const cartQtyFor = useCallback((product, variantId = null) => (
-    cart.find((line) => line.id === product.id && (line.variantId || null) === (variantId || null))?.qty || 0
-  ), [cart]);
+    currentCart.find((line) => line.id === product.id && (line.variantId || null) === (variantId || null))?.qty || 0
+  ), [currentCart]);
   const canAddToBag = useCallback((product) => {
     if (!product.inStock) return false;
     if (product.hasVariants) {
@@ -199,6 +283,10 @@ export default function App() {
     return Number(product.stock) > cartQtyFor(product);
   }, [cartQtyFor]);
   const addToCart = useCallback((product, variant, qty = 1) => {
+    if (!cartIsReady) {
+      setToast({ id: Date.now(), type: 'error', message: 'Your cart is still loading. Please try again in a moment.' });
+      return false;
+    }
     if (product.hasVariants && !variant) { setQuickView(product); return; }
     try {
       const requestedQty = Number(qty);
@@ -228,7 +316,7 @@ export default function App() {
       setToast({ id: Date.now(), type: 'error', message: 'Could not add this item. Please try again.' });
       return false;
     }
-  }, [cartQtyFor]);
+  }, [cartIsReady, cartQtyFor]);
   const toggleWishlist = useCallback(async (product) => {
     if (!user) {
       try { sessionStorage.setItem('strawping.pendingWishlist', product.id); } catch {}
@@ -259,7 +347,7 @@ export default function App() {
     }
   }, [user?.id]);
   const scrollToShop = useCallback(() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), []);
-  const cartLines = cart.map((item) => {
+  const cartLines = currentCart.map((item) => {
     const product = products.find((p) => p.id === item.id);
     const variant = product?.variants?.find((v) => v.id === item.variantId);
     return product ? { ...item, product, variant, maxQty: Math.max(0, Number(variant ? variant.stock : product.stock) || 0), qty: Math.min(item.qty, Math.max(0, Number(variant ? variant.stock : product.stock) || 0)), unitPrice: variantPrice(product, variant) } : null;
@@ -281,7 +369,7 @@ export default function App() {
       </main>}
     <Footer />
     <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} />
-    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} />
+    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} cartLoading={!cartIsReady && !cartLoadError} cartLoadError={cartLoadError} />
     <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} />
     <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} products={products} productIds={wishlistIds} onRemove={(id) => toggleWishlist({ id })} onAdd={(p) => { setWishlistOpen(false); if (p.hasVariants) setQuickView(p); else addToCart(p, null); }} />
     <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
