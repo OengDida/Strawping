@@ -14,6 +14,7 @@ import AuthModal from '../features/auth/components/AuthModal.jsx';
 import useAuthSession from '../features/auth/hooks/useAuthSession.js';
 import { logout } from '../features/auth/supabase.js';
 import AccountSettingsModal from '../features/account/components/AccountSettingsModal.jsx';
+import OrderHistoryPage from '../features/account/components/OrderHistoryPage.jsx';
 import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js';
 import { addMyWishlistItem, loadMyWishlist, removeMyWishlistItem } from '../features/account/accountService.js';
 import WishlistDrawer from '../features/wishlist/components/WishlistDrawer.jsx';
@@ -46,6 +47,7 @@ function readCart() { try { const value = JSON.parse(localStorage.getItem('straw
 
 export default function App() {
   const heroRef = useRef(null);
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname.replace(/\/+$/, '') || '/');
   const [theme, toggleTheme] = useTheme();
   const [pastHero, setPastHero] = useState(false);
   const [products, setProducts] = useState([]);
@@ -68,6 +70,29 @@ export default function App() {
   const [wishlistIds, setWishlistIds] = useState([]);
   const { user, session, loading: authLoading } = useAuthSession();
   const { profile, setProfile, reload: reloadProfile } = useCustomerProfile(user?.id);
+  const isOrderHistory = currentPath === '/account/orders';
+
+  const navigateTo = useCallback((target) => {
+    window.history.pushState({}, '', target);
+    setCurrentPath(window.location.pathname.replace(/\/+$/, '') || '/');
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => setCurrentPath(window.location.pathname.replace(/\/+$/, '') || '/');
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (currentPath === '/account/orders') {
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    if (currentPath !== '/') return;
+    const hash = window.location.hash.slice(1);
+    if (hash) requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' }));
+    else window.scrollTo({ top: 0 });
+  }, [currentPath]);
 
   useEffect(() => {
     let alive = true;
@@ -216,16 +241,18 @@ export default function App() {
 
   return <div className="min-h-screen overflow-x-clip">
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
-    <Navbar solid={pastHero} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
-    <main>
-      <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
-      <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
-        <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
-        <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
-        {products.length === 0 && <p className="py-16 text-center text-sm text-mute">No products are available yet. Add products through the existing admin panel.</p>}
-      </section>
-      <About />
-    </main>
+    <Navbar solid={pastHero || isOrderHistory} isAccountPage={isOrderHistory} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onOrderHistory={() => navigateTo('/account/orders')} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
+    {isOrderHistory
+      ? <OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} />
+      : <main>
+        <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
+        <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
+          <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
+          <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
+          {products.length === 0 && <p className="py-16 text-center text-sm text-mute">No products are available yet. Add products through the existing admin panel.</p>}
+        </section>
+        <About />
+      </main>}
     <Footer />
     <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} />
     <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} />

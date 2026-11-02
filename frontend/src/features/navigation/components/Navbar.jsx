@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ShoppingBag, Menu, X, UserRound, LogOut, Heart, Settings } from 'lucide-react';
+import { Search, ShoppingBag, Menu, X, UserRound, LogOut, Heart, Settings, Package } from 'lucide-react';
 import { ease } from '../../../shared/motion.js';
 import { ThemeToggle, ThemeSwitchRow } from './ThemeToggle.jsx';
 
@@ -35,7 +35,7 @@ function IconButton({ label, onClick, count = 0, children, className = '', expan
   );
 }
 
-export default function Navbar({ solid, cartCount, wishlistCount = 0, onCart, onWishlist, onSearch, theme, onToggleTheme, user, onAuthClick, onSettings, onLogout }) {
+export default function Navbar({ solid, isAccountPage = false, cartCount, wishlistCount = 0, onCart, onWishlist, onSearch, theme, onToggleTheme, user, onAuthClick, onSettings, onOrderHistory, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const glassOn = solid || menuOpen;
@@ -55,7 +55,7 @@ export default function Navbar({ solid, cartCount, wishlistCount = 0, onCart, on
           className={`glass pointer-events-none absolute inset-0 rounded-2xl transition-opacity duration-500 ${glassOn ? 'opacity-100' : 'opacity-0'}`}
         />
 
-        <a href="#top" className="focus-ring relative flex items-center gap-2.5 rounded-lg" aria-label="Strawping — home">
+        <a href={isAccountPage ? '/' : '#top'} className="focus-ring relative flex items-center gap-2.5 rounded-lg" aria-label="Strawping — home">
           <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-ink text-[12px] font-bold tracking-tight text-onsolid">S</span>
           <span className="text-[15px] font-semibold tracking-[-0.02em]">
             Strawping
@@ -66,7 +66,7 @@ export default function Navbar({ solid, cartCount, wishlistCount = 0, onCart, on
           {LINKS.map((l) => (
             <li key={l.label}>
               <a
-                href={l.href}
+                href={isAccountPage ? `/${l.href}` : l.href}
                 className="focus-ring rounded-full border border-ink/30 px-4 py-2 text-sm text-charcoal/75 transition duration-300 hover:bg-surface/60 hover:text-ink dark:border-white/25"
               >
                 {l.label}
@@ -95,13 +95,16 @@ export default function Navbar({ solid, cartCount, wishlistCount = 0, onCart, on
               <UserRound className="h-[18px] w-[18px]" strokeWidth={1.8} />
             </IconButton>
             {user && accountOpen && (
-              <div className="glass-panel absolute right-0 top-12 z-50 w-64 rounded-2xl p-2">
-                <p className="truncate px-3 py-2 text-xs text-mute">{user.email}</p>
-                <button type="button" onClick={() => { setAccountOpen(false); onSettings?.(); }} className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-surface/70">
-                  <Settings className="h-4 w-4" /> Settings
+              <div role="menu" aria-label="Account" className="absolute right-0 top-12 z-50 w-64 rounded-2xl border border-white/10 bg-[#151716] p-2 text-white shadow-2xl">
+                <p className="truncate border-b border-white/10 px-3 py-3 text-xs text-white/60">{user.email || 'Signed in'}</p>
+                <button type="button" role="menuitem" onClick={() => { setAccountOpen(false); onSettings?.(); }} className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-white/10">
+                  <Settings className="h-4 w-4 text-white/65" /> Settings
                 </button>
-                <button type="button" onClick={async () => { setAccountOpen(false); await onLogout?.(); }} className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-surface/70">
-                  <LogOut className="h-4 w-4" /> Log out
+                <button type="button" role="menuitem" onClick={() => { setAccountOpen(false); onOrderHistory?.(); }} className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-white/10">
+                  <Package className="h-4 w-4 text-white/65" /> Order History
+                </button>
+                <button type="button" role="menuitem" onClick={async () => { setAccountOpen(false); await onLogout?.(); }} className="focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition hover:bg-white/10">
+                  <LogOut className="h-4 w-4 text-white/65" /> Log out
                 </button>
               </div>
             )}
@@ -129,7 +132,7 @@ export default function Navbar({ solid, cartCount, wishlistCount = 0, onCart, on
             {LINKS.map((l) => (
               <li key={l.label}>
                 <a
-                  href={l.href}
+                  href={isAccountPage ? `/${l.href}` : l.href}
                   onClick={() => setMenuOpen(false)}
                   className="focus-ring block rounded-xl border border-ink/20 px-4 py-3 text-[15px] transition hover:bg-surface/60 dark:border-white/20"
                 >

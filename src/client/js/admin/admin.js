@@ -831,7 +831,7 @@ function renderAdminOrders() {
       : [];
     const orderId = escapeHtml(order?.id || "");
     const safeCurrency = escapeHtml(currency);
-    const statuses = ["New", "Contacted", "Shipped", "Completed", "Cancelled"];
+    const statuses = ["Pending", "Contacted", "Shipped", "Completed", "Cancelled"];
 
     return `
       <div class="order-card">

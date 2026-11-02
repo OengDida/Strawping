@@ -428,10 +428,12 @@ test("order totals and item details are derived from the server catalog", async 
 
   assert.equal(response.statusCode, 201);
   assert.equal(savedOrder.total, 7);
+  assert.equal(savedOrder.status, "Pending");
   assert.deepEqual(savedOrder.items, [{
     id: "prod-mug",
     name: "Mug",
     quantity: 2,
+    image: "",
     price: 3.5
   }]);
 });
@@ -872,7 +874,7 @@ test("orders for variant products need a valid in-stock variant and use the serv
   assert.equal(good.statusCode, 201);
   assert.equal(saved.total, 32.5);
   assert.deepEqual(saved.items[0], {
-    id: "prod-tee", name: "Tee", quantity: 1, price: 12.5, variantId: "var-l-red", variantLabel: "L / Red"
+    id: "prod-tee", name: "Tee", quantity: 1, image: "", price: 12.5, variantId: "var-l-red", variantLabel: "L / Red"
   });
 
   const repeated = await placeOrder([

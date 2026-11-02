@@ -875,7 +875,11 @@ export async function handler(event, context = {}) {
         }
 
         totalCents += unitCents * requested.quantity;
-        items.push({ ...line, price: unitCents / 100 });
+        items.push({
+          ...line,
+          image: product.thumbnail || product.image || product.images?.[0] || "",
+          price: unitCents / 100
+        });
       }
       if (!Number.isSafeInteger(totalCents) || totalCents > 999999999999) {
         return json(400, { error: "Order total is out of range." });
@@ -884,7 +888,7 @@ export async function handler(event, context = {}) {
       const order = {
         id: `ord-${crypto.randomUUID()}`,
         createdAt: new Date().toISOString(),
-        status: "New",
+        status: "Pending",
         customer,
         items,
         total: totalCents / 100
@@ -915,7 +919,7 @@ export async function handler(event, context = {}) {
         return json(403, { error: "Invalid CSRF token" });
       }
       if (!ORDER_ID_PATTERN.test(segments[1])) return json(400, { error: "Invalid order id" });
-      const allowedStatuses = ["New", "Contacted", "Shipped", "Completed", "Cancelled"];
+      const allowedStatuses = ["Pending", "Contacted", "Shipped", "Completed", "Cancelled"];
       if (!allowedStatuses.includes(body.status)) return json(400, { error: "Invalid order status" });
       const rows = await db(`store_orders?id=eq.${encodeURIComponent(segments[1])}`, {
         method: "PATCH",
