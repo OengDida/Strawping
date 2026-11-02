@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LoaderCircle, X } from 'lucide-react';
 import { useEscape, useScrollLock } from '../../../shared/hooks/index.js';
-import { saveMyProfile, updateMyEmail, updateMyPassword } from '../accountService.js';
+import { saveMyProfile } from '../accountService.js';
 
 function errorText(error) {
   if (error?.code === '23505' || /duplicate key|already exists/i.test(error?.message || '')) return 'That username is already taken.';
@@ -12,9 +12,6 @@ function errorText(error) {
 export default function AccountSettingsModal({ open, onClose, user, profile, onProfileUpdated }) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -25,9 +22,6 @@ export default function AccountSettingsModal({ open, onClose, user, profile, onP
     if (!open) return;
     setUsername(profile?.username || '');
     setDisplayName(profile?.display_name || user?.user_metadata?.full_name || user?.user_metadata?.name || '');
-    setEmail(user?.email || '');
-    setPassword('');
-    setConfirmPassword('');
     setError('');
     setNotice('');
   }, [open, profile, user]);
@@ -49,29 +43,6 @@ export default function AccountSettingsModal({ open, onClose, user, profile, onP
     finally { setBusy(''); }
   };
 
-  const saveEmail = async (event) => {
-    event.preventDefault(); setBusy('email'); setError(''); setNotice('');
-    if (!email.trim() || email.trim().toLowerCase() === (user?.email || '').toLowerCase()) {
-      setBusy(''); setError('Enter a different email address.'); return;
-    }
-    try {
-      await updateMyEmail(email.trim());
-      setNotice('Email change requested. Follow the confirmation link sent by Supabase to finish updating it.');
-    } catch (saveError) { setError(errorText(saveError)); }
-    finally { setBusy(''); }
-  };
-
-  const savePassword = async (event) => {
-    event.preventDefault(); setBusy('password'); setError(''); setNotice('');
-    if (password.length < 8) { setBusy(''); setError('Use a password with at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setBusy(''); setError('The passwords do not match.'); return; }
-    try {
-      await updateMyPassword(password);
-      setPassword(''); setConfirmPassword(''); setNotice('Password updated.');
-    } catch (saveError) { setError(errorText(saveError)); }
-    finally { setBusy(''); }
-  };
-
   const button = (key, label) => <button type="submit" disabled={Boolean(busy)} className="focus-ring flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 text-sm font-semibold text-onsolid transition hover:opacity-90 disabled:cursor-wait disabled:opacity-60">
     {busy === key && <LoaderCircle className="h-4 w-4 animate-spin" />}{busy === key ? 'Saving…' : label}
   </button>;
@@ -89,17 +60,6 @@ export default function AccountSettingsModal({ open, onClose, user, profile, onP
           <label className="block text-xs font-medium text-charcoal/75">Username<input required minLength={3} maxLength={30} autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} className={inputClass} placeholder="rider_name" /></label>
           <label className="block text-xs font-medium text-charcoal/75">Display name<input required maxLength={120} autoComplete="name" value={displayName} onChange={(event) => setDisplayName(event.target.value)} className={inputClass} placeholder="Your name" /></label>
           {button('profile', 'Save profile')}
-        </form>
-        <form onSubmit={saveEmail} className="mt-6 space-y-3 border-t border-ink/[.08] pt-5">
-          <h3 className="text-sm font-semibold">Email address</h3>
-          <label className="block text-xs font-medium text-charcoal/75">New email<input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} /></label>
-          {button('email', 'Update email')}
-        </form>
-        <form onSubmit={savePassword} className="mt-6 space-y-3 border-t border-ink/[.08] pt-5">
-          <h3 className="text-sm font-semibold">Change password</h3>
-          <label className="block text-xs font-medium text-charcoal/75">New password<input required type="password" minLength={8} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} /></label>
-          <label className="block text-xs font-medium text-charcoal/75">Confirm new password<input required type="password" minLength={8} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className={inputClass} /></label>
-          {button('password', 'Update password')}
         </form>
       </motion.section>
     </motion.div>}

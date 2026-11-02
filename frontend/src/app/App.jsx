@@ -14,6 +14,7 @@ import AuthModal from '../features/auth/components/AuthModal.jsx';
 import useAuthSession from '../features/auth/hooks/useAuthSession.js';
 import { logout } from '../features/auth/supabase.js';
 import AccountSettingsModal from '../features/account/components/AccountSettingsModal.jsx';
+import UsernameSetupModal from '../features/account/components/UsernameSetupModal.jsx';
 import OrderHistoryPage from '../features/account/components/OrderHistoryPage.jsx';
 import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js';
 import { addMyWishlistItem, loadMyWishlist, removeMyWishlistItem } from '../features/account/accountService.js';
@@ -69,8 +70,33 @@ export default function App() {
   });
   const [wishlistIds, setWishlistIds] = useState([]);
   const { user, session, loading: authLoading } = useAuthSession();
-  const { profile, setProfile, reload: reloadProfile } = useCustomerProfile(user?.id);
+  const { profile, setProfile, loading: profileLoading, error: profileError, loadedForUserId, reload: reloadProfile } = useCustomerProfile(user?.id);
   const isOrderHistory = currentPath === '/account/orders';
+  const [usernamePromptOpen, setUsernamePromptOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setUsernamePromptOpen(false);
+      return;
+    }
+    if (profileLoading || profileError || loadedForUserId !== user.id) return;
+    if (profile?.username?.trim()) {
+      setUsernamePromptOpen(false);
+      return;
+    }
+    let wasDismissed = false;
+    try {
+      wasDismissed = localStorage.getItem(`strawping.usernamePromptDismissed.${user.id}`) === 'true';
+    } catch {}
+    setUsernamePromptOpen(!wasDismissed);
+  }, [user?.id, profile, profileLoading, profileError, loadedForUserId]);
+
+  const dismissUsernamePrompt = useCallback(() => {
+    if (user?.id) {
+      try { localStorage.setItem(`strawping.usernamePromptDismissed.${user.id}`, 'true'); } catch {}
+    }
+    setUsernamePromptOpen(false);
+  }, [user?.id]);
 
   const navigateTo = useCallback((target) => {
     window.history.pushState({}, '', target);
@@ -258,8 +284,17 @@ export default function App() {
     <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} />
     <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} />
     <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} products={products} productIds={wishlistIds} onRemove={(id) => toggleWishlist({ id })} onAdd={(p) => { setWishlistOpen(false); if (p.hasVariants) setQuickView(p); else addToCart(p, null); }} />
-    <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} onAuthenticated={() => setAuthOpen(false)} />
+    <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
     <AccountSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} user={user} profile={profile} onProfileUpdated={(nextProfile) => { setProfile(nextProfile); reloadProfile(); }} />
+    <UsernameSetupModal
+      open={usernamePromptOpen}
+      onClose={dismissUsernamePrompt}
+      user={user}
+      onSaved={(nextProfile) => {
+        setProfile(nextProfile);
+        dismissUsernamePrompt();
+      }}
+    />
     <Toast toast={toast} onDismiss={() => setToast(null)} onView={() => { setToast(null); setCartOpen(true); }} />
     <BackToTop visible={pastHero && !cartOpen} />
   </div>;

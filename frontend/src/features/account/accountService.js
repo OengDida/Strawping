@@ -64,6 +64,35 @@ export async function saveMyProfile(userId, { username, displayName }) {
   return data;
 }
 
+export async function saveMyUsername(userId, username) {
+  const supabaseClient = client();
+  const { data, error } = await supabaseClient
+    .from('profiles')
+    .update({ username })
+    .eq('id', userId)
+    .select('id, username, display_name')
+    .maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+
+  // A profile row is normally provisioned during OAuth signup. Create it if
+  // the project does not have that trigger configured.
+  const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+  if (userError) throw userError;
+  if (!user || user.id !== userId) throw new Error('Your session has expired. Please sign in again.');
+  const displayName = user.user_metadata?.full_name
+    || user.user_metadata?.name
+    || user.email?.split('@')[0]
+    || username;
+  const { data: inserted, error: insertError } = await supabaseClient
+    .from('profiles')
+    .insert({ id: userId, username, display_name: displayName })
+    .select('id, username, display_name')
+    .single();
+  if (insertError) throw insertError;
+  return inserted;
+}
+
 export async function loadMyWishlist(userId) {
   const { data, error } = await client()
     .from('wishlist_items')
@@ -97,14 +126,3 @@ export async function removeMyWishlistItem(productId) {
   if (error) throw error;
 }
 
-export async function updateMyEmail(email) {
-  const { data, error } = await client().auth.updateUser({ email });
-  if (error) throw error;
-  return data;
-}
-
-export async function updateMyPassword(password) {
-  const { data, error } = await client().auth.updateUser({ password });
-  if (error) throw error;
-  return data;
-}

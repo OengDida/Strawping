@@ -21,25 +21,6 @@ function requireSupabase() {
   return supabase;
 }
 
-export async function signInWithPassword(email, password) {
-  const { data, error } = await requireSupabase().auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data;
-}
-
-export async function signUp(email, password, displayName = '') {
-  const { data, error } = await requireSupabase().auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: window.location.origin,
-      data: displayName.trim() ? { full_name: displayName.trim() } : {},
-    },
-  });
-  if (error) throw error;
-  return data;
-}
-
 export async function signInWithGoogle() {
   const { data, error } = await requireSupabase().auth.signInWithOAuth({
     provider: 'google',
