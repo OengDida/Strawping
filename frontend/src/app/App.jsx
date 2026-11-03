@@ -359,7 +359,7 @@ export default function App() {
     return product ? { ...item, product, variant, maxQty: Math.max(0, Number(variant ? variant.stock : product.stock) || 0), qty: Math.min(item.qty, Math.max(0, Number(variant ? variant.stock : product.stock) || 0)), unitPrice: variantPrice(product, variant) } : null;
   }).filter(Boolean);
 
-  return <div className="min-h-screen overflow-x-clip">
+  return <div className="min-h-screen overflow-x-hidden">
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
     <Navbar solid={pastHero || isOrderHistory} isAccountPage={isOrderHistory} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onOrderHistory={() => navigateTo('/account/orders')} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
     {isOrderHistory

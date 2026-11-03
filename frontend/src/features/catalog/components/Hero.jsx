@@ -26,7 +26,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
       <div aria-hidden className="pointer-events-none absolute -right-48 -top-48 h-[620px] w-[620px] rounded-full bg-accent/[0.13] dark:bg-accent/[0.16] blur-[130px]" />
       <div aria-hidden className="pointer-events-none absolute -left-48 top-1/2 h-[480px] w-[480px] rounded-full bg-alloy/40 blur-[130px]" />
 
-      <div className="relative mx-auto grid min-h-[100svh] max-w-7xl items-center gap-14 px-5 pb-16 pt-28 lg:grid-cols-12 lg:gap-10">
+      <div className="relative mx-auto grid min-h-screen min-h-[100svh] max-w-7xl items-center gap-14 px-5 pb-16 pt-28 lg:grid-cols-12 lg:gap-10">
         <div className="lg:col-span-7">
           <motion.p {...fadeUp(0)} className="eyebrow mb-8 flex items-center gap-3">
             <span className="h-px w-8 bg-accent" /> Made by riders,
