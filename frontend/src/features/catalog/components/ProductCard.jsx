@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Eye, Plus, Heart } from 'lucide-react';
 import { ease } from '../../../shared/motion.js';
 import { formatPrice } from '../model.js';
+import ProductImage from './ProductImage.jsx';
 
 const ProductCard = forwardRef(function ProductCard({ product, index, onQuickView, onAdd, canAdd, isWishlisted, onToggleWishlist }, ref) {
   const addEnabled = canAdd ? canAdd(product) : product.inStock;
@@ -24,11 +25,10 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
           aria-label={`Quick view ${product.name}`}
           className="focus-ring block w-full rounded-[1.75rem]"
         >
-          <img
+          <ProductImage
             src={product.image}
-            alt={`${product.name} ${product.category || ""}` }
-            loading="lazy"
-            className="aspect-[4/5] w-full object-cover transition-transform duration-[900ms] ease-[cubic-bezier(.22,1,.36,1)] group-hover:scale-[1.045] dark:brightness-[.9]"
+            alt={`${product.name} ${product.category || ''}`}
+            priority={index < 2}
           />
         </button>
 

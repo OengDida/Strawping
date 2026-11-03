@@ -20,7 +20,7 @@ import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js'
 import { addMyWishlistItem, loadMyCart, loadMyWishlist, removeMyWishlistItem, saveMyCart } from '../features/account/accountService.js';
 import { clearGuestCart, mergeCartItems, readGuestCart, saveGuestCart, serializeCartItems } from '../features/cart/cartModel.js';
 import WishlistDrawer from '../features/wishlist/components/WishlistDrawer.jsx';
-import { loadStore } from '../shared/services/api.js';
+import { useCatalog } from '../features/catalog/hooks/useCatalog.js';
 import { mapProduct, variantPrice } from '../features/catalog/model.js';
 import { useScrollLock, useTheme } from '../shared/hooks/index.js';
 
@@ -52,9 +52,6 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname.replace(/\/+$/, '') || '/');
   const [theme, toggleTheme] = useTheme();
   const [pastHero, setPastHero] = useState(false);
-  const [products, setProducts] = useState([]);
-  const [settings, setSettings] = useState({ storeName: 'Strawping', tagline: 'Thoughtfully chosen for the everyday.', contactTelegram: '' });
-  const [syncError, setSyncError] = useState('');
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState('featured');
   const [cart, dispatch] = useReducer(cartReducer, []);
@@ -78,6 +75,25 @@ export default function App() {
   });
   const [wishlistIds, setWishlistIds] = useState([]);
   const { user, session, loading: authLoading } = useAuthSession();
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    isError: catalogFailed,
+    error: catalogError,
+  } = useCatalog();
+  const products = useMemo(
+    () => (catalog?.products ?? []).map(mapProduct),
+    [catalog?.products],
+  );
+  const settings = useMemo(() => ({
+    storeName: 'Strawping',
+    tagline: 'Thoughtfully chosen for the everyday.',
+    contactTelegram: '',
+    ...(catalog?.settings ?? {}),
+  }), [catalog?.settings]);
+  const syncError = catalogFailed
+    ? catalogError?.message || 'Catalog refresh failed; showing cached products.'
+    : '';
   const { profile, setProfile, loading: profileLoading, error: profileError, loadedForUserId, reload: reloadProfile } = useCustomerProfile(user?.id);
   const isOrderHistory = currentPath === '/account/orders';
   const [usernamePromptOpen, setUsernamePromptOpen] = useState(false);
@@ -131,16 +147,6 @@ export default function App() {
     else window.scrollTo({ top: 0 });
   }, [currentPath]);
 
-  useEffect(() => {
-    let alive = true;
-    loadStore().then((result) => {
-      if (!alive) return;
-      setProducts(result.products.map(mapProduct));
-      setSettings((old) => ({ ...old, ...result.settings }));
-      setSyncError(result.online ? '' : (result.error || 'Catalog is offline; showing cached products.'));
-    });
-    return () => { alive = false; };
-  }, []);
   useEffect(() => {
     if (authLoading) return undefined;
     const owner = user?.id || 'guest';
@@ -362,8 +368,7 @@ export default function App() {
         <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
         <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
           <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
-          <ProductGrid products={visible} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
-          {products.length === 0 && <p className="py-16 text-center text-sm text-mute">No products are available yet. Add products through the existing admin panel.</p>}
+          <ProductGrid products={visible} loading={catalogLoading} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
         </section>
         <About />
       </main>}
