@@ -1,12 +1,13 @@
+import { memo } from 'react';
 import ProductCard from './ProductCard.jsx';
 
-export default function ProductGrid({
+function ProductGrid({
   products,
   loading = false,
   onQuickView,
   onAdd,
   canAdd,
-  wishlistIds = [],
+  wishlistIdSet = new Set(),
   onToggleWishlist,
 }) {
   if (loading && products.length === 0) {
@@ -33,18 +34,19 @@ export default function ProductGrid({
 
   return (
     <ul className="grid grid-cols-1 gap-x-6 gap-y-12 min-[480px]:grid-cols-2 lg:grid-cols-4">
-      {products.map((product, index) => (
-          <ProductCard
-            key={product.id}
-            product={product}
-            index={index}
-            onQuickView={onQuickView}
-            onAdd={onAdd}
-            canAdd={canAdd}
-            isWishlisted={wishlistIds.includes(product.id)}
-            onToggleWishlist={onToggleWishlist}
-          />
+      {products.map((product) => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          onQuickView={onQuickView}
+          onAdd={onAdd}
+          addEnabled={canAdd ? canAdd(product) : product.inStock}
+          isWishlisted={wishlistIdSet.has(product.id)}
+          onToggleWishlist={onToggleWishlist}
+        />
       ))}
     </ul>
   );
 }
+
+export default memo(ProductGrid);

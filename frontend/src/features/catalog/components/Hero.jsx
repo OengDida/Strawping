@@ -1,9 +1,10 @@
-import { forwardRef, useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { forwardRef } from 'react';
+import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
 import GlassButton from '../../../shared/components/GlassButton.jsx';
 import { ease } from '../../../shared/motion.js';
 import { formatPrice } from '../model.js';
+import { getResponsiveImageSources } from '../imageSources.js';
 
 const line = {
   hidden: { y: '110%' },
@@ -17,14 +18,19 @@ const fadeUp = (delay) => ({
 });
 
 const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) {
-  const frame = useRef(null);
-  const { scrollYProgress } = useScroll({ target: frame, offset: ['start end', 'end start'] });
-  const imgY = useTransform(scrollYProgress, [0, 1], ['-7%', '7%']);
+  const heroImage = featured?.image ||
+    'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=1000&q=85';
+  const { src: heroSrc, srcSet: heroSrcSet } = getResponsiveImageSources(heroImage, {
+    widths: [480, 640, 960, 1280],
+    aspectRatio: 4 / 5,
+    quality: 75,
+    fallbackWidth: 640,
+  });
 
   return (
     <section id="top" ref={ref} className="relative overflow-hidden">
-      <div aria-hidden className="pointer-events-none absolute -right-48 -top-48 h-[620px] w-[620px] rounded-full bg-accent/[0.13] dark:bg-accent/[0.16] blur-[130px]" />
-      <div aria-hidden className="pointer-events-none absolute -left-48 top-1/2 h-[480px] w-[480px] rounded-full bg-alloy/40 blur-[130px]" />
+      <div aria-hidden className="pointer-events-none absolute -right-48 -top-48 h-[620px] w-[620px] rounded-full bg-accent/[0.13] dark:bg-accent/[0.16] blur-[130px] max-md:hidden" />
+      <div aria-hidden className="pointer-events-none absolute -left-48 top-1/2 h-[480px] w-[480px] rounded-full bg-alloy/40 blur-[130px] max-md:hidden" />
 
       <div className="relative mx-auto grid min-h-screen min-h-[100svh] max-w-7xl items-center gap-14 px-5 pb-16 pt-28 lg:grid-cols-12 lg:gap-10">
         <div className="lg:col-span-7">
@@ -62,13 +68,19 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
           className="lg:col-span-5"
         >
           <div
-            ref={frame}
             className="relative mx-auto aspect-[4/5] w-full max-w-md overflow-hidden rounded-[2rem] bg-stone shadow-lift lg:max-w-none"
           >
             <motion.img
-              src={featured?.image || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=1000&q=85'}
+              src={heroSrc}
+              srcSet={heroSrcSet}
+              sizes="(max-width: 1023px) 92vw, 40vw"
               alt={featured ? `${featured.name} ${featured.type}` : 'Motorcycle equipment'}
-              style={{ y: imgY, scale: 1.16 }}
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              width="640"
+              height="800"
+              style={{ scale: 1.08 }}
               className="h-full w-full object-cover dark:brightness-[.9]"
             />
             <button

@@ -140,16 +140,43 @@
    can cause scrolling and opening-drawer jank on mid-range devices. */
 @media (max-width: 767px) {
   .glass, .glass-dark {
-    -webkit-backdrop-filter: blur(10px) saturate(135%);
-    backdrop-filter: blur(10px) saturate(135%);
+    -webkit-backdrop-filter: blur(6px) saturate(120%);
+    backdrop-filter: blur(6px) saturate(120%);
   }
   .glass-panel {
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(8px) saturate(125%);
+    backdrop-filter: blur(8px) saturate(125%);
   }
   .sheen { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce), (max-width: 767px) {
   .group:hover .sheen { background-position: 100% 0; }
+}
+
+/* Keep each card's 4:5 media box reserved while the browser skips off-screen
+   layout/paint. Values approximate image + caption height at each grid width. */
+.product-grid__item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32rem;
+}
+.product-grid__action {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (min-width: 480px) and (max-width: 1023px) {
+  .product-grid__item { contain-intrinsic-size: auto 22rem; }
+}
+@media (min-width: 1024px) {
+  .product-grid__item { contain-intrinsic-size: auto 26rem; }
+}
+
+/* Touch browsers can retain :hover after a tap; avoid promoting cards through
+   hover transforms/shadows when there is no precise pointing device. */
+@media (hover: none) {
+  .product-grid__item:hover .product-grid__surface {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  .product-grid__item button:hover { transform: none; }
 }

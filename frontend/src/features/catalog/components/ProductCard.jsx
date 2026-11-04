@@ -1,12 +1,12 @@
+import { memo } from 'react';
 import { Eye, Plus, Heart } from 'lucide-react';
 import { formatPrice } from '../model.js';
 import ProductImage from './ProductImage.jsx';
 
-export default function ProductCard({ product, index, onQuickView, onAdd, canAdd, isWishlisted, onToggleWishlist }) {
-  const addEnabled = canAdd ? canAdd(product) : product.inStock;
+function ProductCard({ product, onQuickView, onAdd, addEnabled, isWishlisted, onToggleWishlist }) {
   return (
-    <li className="group">
-      <div className="relative overflow-hidden rounded-[1.75rem] bg-stone ring-1 ring-inset ring-black/[0.03] transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(.22,1,.36,1)] group-hover:-translate-y-1.5 group-hover:shadow-lift">
+    <li className="group product-grid__item">
+      <div className="product-grid__surface relative overflow-hidden rounded-[1.75rem] bg-stone ring-1 ring-inset ring-black/[0.03] transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(.22,1,.36,1)] group-hover:-translate-y-1.5 group-hover:shadow-lift">
         <button
           type="button"
           onClick={() => onQuickView(product)}
@@ -16,7 +16,6 @@ export default function ProductCard({ product, index, onQuickView, onAdd, canAdd
           <ProductImage
             src={product.image}
             alt={`${product.name} ${product.category || ''}`}
-            priority={index < 2}
           />
         </button>
 
@@ -32,7 +31,7 @@ export default function ProductCard({ product, index, onQuickView, onAdd, canAdd
           onClick={() => onToggleWishlist?.(product)}
           aria-label={`${isWishlisted ? 'Remove' : 'Add'} ${product.name} ${isWishlisted ? 'from' : 'to'} wishlist`}
           aria-pressed={Boolean(isWishlisted)}
-          className="glass focus-ring absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full transition hover:scale-105"
+          className="glass focus-ring absolute right-3 top-3 z-10 grid h-11 w-11 place-items-center rounded-full transition hover:scale-105"
         >
           <Heart className={`h-[18px] w-[18px] ${isWishlisted ? 'fill-accent text-accent' : 'text-ink'}`} strokeWidth={1.8} />
         </button>
@@ -46,7 +45,7 @@ export default function ProductCard({ product, index, onQuickView, onAdd, canAdd
           <button
             type="button"
             onClick={() => onQuickView(product)}
-            className="glass focus-ring flex h-10 flex-1 items-center justify-center gap-2 rounded-full text-sm font-medium transition hover:bg-surface/60"
+            className="product-grid__action glass focus-ring flex h-11 flex-1 items-center justify-center gap-2 rounded-full text-sm font-medium transition hover:bg-surface/60"
           >
             <Eye className="h-4 w-4" strokeWidth={1.8} /> Quick View
           </button>
@@ -55,7 +54,7 @@ export default function ProductCard({ product, index, onQuickView, onAdd, canAdd
             onClick={() => { if (addEnabled) onAdd(product); }}
             aria-label={addEnabled ? `Add ${product.name} to bag` : `${product.name} out of stock`}
             disabled={!addEnabled}
-            className="glass-dark focus-ring flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40"
+            className="product-grid__action glass-dark focus-ring flex h-11 items-center gap-1.5 rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus className="h-4 w-4" /> {addEnabled ? 'Add' : 'Out of stock'}
           </button>
@@ -72,3 +71,5 @@ export default function ProductCard({ product, index, onQuickView, onAdd, canAdd
     </li>
   );
 }
+
+export default memo(ProductCard);

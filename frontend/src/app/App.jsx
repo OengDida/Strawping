@@ -1,10 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import Navbar from '../features/navigation/components/Navbar.jsx';
-// Keep above-the-fold storefront sections in the initial bundle. Deferring these
-// made the homepage show only an empty Suspense placeholder on slower phones.
 import Hero from '../features/catalog/components/Hero.jsx';
-import FilterBar from '../features/catalog/components/FilterBar.jsx';
-import ProductGrid from '../features/catalog/components/ProductGrid.jsx';
+const FilterBar = lazy(() => import('../features/catalog/components/FilterBar.jsx'));
+const ProductGrid = lazy(() => import('../features/catalog/components/ProductGrid.jsx'));
 const About = lazy(() => import('../features/catalog/components/About.jsx'));
 const QuickView = lazy(() => import('../features/catalog/components/QuickView.jsx'));
 const CartDrawer = lazy(() => import('../features/cart/components/CartDrawer.jsx'));
@@ -51,9 +49,12 @@ function cartReducer(state, action) {
 
 export default function App() {
   const heroRef = useRef(null);
+  const shopRef = useRef(null);
+  const wishlistIdsRef = useRef([]);
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname.replace(/\/+$/, '') || '/');
   const [theme, toggleTheme] = useTheme();
   const [pastHero, setPastHero] = useState(false);
+  const [shopComponentsReady, setShopComponentsReady] = useState(false);
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState('featured');
   const [cart, dispatch] = useReducer(cartReducer, []);
@@ -99,6 +100,25 @@ export default function App() {
   const { profile, setProfile, loading: profileLoading, error: profileError, loadedForUserId, reload: reloadProfile } = useCustomerProfile(user?.id);
   const isOrderHistory = currentPath === '/account/orders';
   const [usernamePromptOpen, setUsernamePromptOpen] = useState(false);
+  useEffect(() => {
+    if (isOrderHistory || shopComponentsReady) return undefined;
+    const target = shopRef.current;
+    if (!target) return undefined;
+
+    if (!('IntersectionObserver' in window)) {
+      setShopComponentsReady(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setShopComponentsReady(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: '900px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [isOrderHistory, shopComponentsReady]);
   const expectedCartScope = user?.id || 'guest';
   const cartIsReady = cartReady && cartScope === expectedCartScope;
   const currentCart = cartIsReady ? cart : [];
@@ -226,12 +246,17 @@ export default function App() {
   useEffect(() => {
     if (authLoading) return undefined;
     if (!user) {
+      wishlistIdsRef.current = [];
       setWishlistIds([]);
       return undefined;
     }
     let active = true;
     loadMyWishlist(user.id)
-      .then((ids) => { if (active) setWishlistIds(ids); })
+      .then((ids) => {
+        if (!active) return;
+        wishlistIdsRef.current = ids;
+        setWishlistIds(ids);
+      })
       .catch((error) => {
         if (!active) return;
         setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not load your wishlist.' });
@@ -249,15 +274,40 @@ export default function App() {
       setPendingWishlistProduct(null);
       try { sessionStorage.removeItem('strawping.pendingWishlist'); } catch {}
       addMyWishlistItem(productId)
-        .then(() => setWishlistIds((current) => current.includes(productId) ? current : [productId, ...current]))
+        .then(() => {
+          if (wishlistIdsRef.current.includes(productId)) return;
+          const next = [productId, ...wishlistIdsRef.current];
+          wishlistIdsRef.current = next;
+          setWishlistIds(next);
+        })
         .catch((error) => setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not save that item.' }));
     }
   }, [user?.id, wishlistAfterAuth, pendingWishlistProduct]);
   useEffect(() => {
-    const onScroll = () => setPastHero(window.scrollY > (heroRef.current?.offsetHeight ?? 600) - 96);
-    onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', onScroll);
-    return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
-  }, []);
+    if (isOrderHistory) {
+      setPastHero(false);
+      return undefined;
+    }
+    const hero = heroRef.current;
+    if (!hero) return undefined;
+    if (!('IntersectionObserver' in window)) {
+      const onScroll = () => setPastHero(window.scrollY > (heroRef.current?.offsetHeight ?? 600) - 96);
+      onScroll();
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll, { passive: true });
+      return () => {
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
+      };
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setPastHero(!entry.isIntersecting),
+      { rootMargin: '-96px 0px 0px 0px' },
+    );
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, [isOrderHistory]);
   useEffect(() => {
     const onKey = (event) => {
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName);
@@ -325,28 +375,38 @@ export default function App() {
       return false;
     }
   }, [cartIsReady, cartQtyFor]);
+  const addToCartRef = useRef(addToCart);
+  addToCartRef.current = addToCart;
+  const addFromGrid = useCallback((product) => (
+    product.hasVariants ? setQuickView(product) : addToCartRef.current(product, null)
+  ), []);
   const toggleWishlist = useCallback(async (product) => {
-    if (!user) {
+    if (!user?.id) {
       try { sessionStorage.setItem('strawping.pendingWishlist', product.id); } catch {}
       setPendingWishlistProduct(product.id);
       setAuthOpen(true);
       return;
     }
     const productId = product.id;
-    const wasSaved = wishlistIds.includes(productId);
-    setWishlistIds((current) => wasSaved
-      ? current.filter((id) => id !== productId)
-      : [productId, ...current]);
+    const wasSaved = wishlistIdsRef.current.includes(productId);
+    const optimistic = wasSaved
+      ? wishlistIdsRef.current.filter((id) => id !== productId)
+      : [productId, ...wishlistIdsRef.current];
+    wishlistIdsRef.current = optimistic;
+    setWishlistIds(optimistic);
     try {
       if (wasSaved) await removeMyWishlistItem(productId);
       else await addMyWishlistItem(productId);
     } catch (error) {
-      setWishlistIds((current) => wasSaved
+      const current = wishlistIdsRef.current;
+      const rollback = wasSaved
         ? (current.includes(productId) ? current : [productId, ...current])
-        : current.filter((id) => id !== productId));
+        : current.filter((id) => id !== productId);
+      wishlistIdsRef.current = rollback;
+      setWishlistIds(rollback);
       setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not update your wishlist.' });
     }
-  }, [user?.id, wishlistIds]);
+  }, [user?.id]);
   const openWishlist = useCallback(() => {
     if (user) setWishlistOpen(true);
     else {
@@ -360,6 +420,7 @@ export default function App() {
     const variant = product?.variants?.find((v) => v.id === item.variantId);
     return product ? { ...item, product, variant, maxQty: Math.max(0, Number(variant ? variant.stock : product.stock) || 0), qty: Math.min(item.qty, Math.max(0, Number(variant ? variant.stock : product.stock) || 0)), unitPrice: variantPrice(product, variant) } : null;
   }).filter(Boolean);
+  const wishlistIdSet = useMemo(() => new Set(wishlistIds), [wishlistIds]);
 
   return <div className="min-h-screen overflow-x-hidden">
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
@@ -368,9 +429,17 @@ export default function App() {
       ? <Suspense fallback={<div className="min-h-[60svh]" />}><OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} /></Suspense>
       : <main>
         <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
-        <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
-          <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
-          <ProductGrid products={visible} loading={catalogLoading} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
+        <section id="shop" ref={shopRef} className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
+          {shopComponentsReady ? (
+            <Suspense fallback={<div aria-busy="true" className="flex min-h-[54svh] items-center justify-center text-sm text-mute">Loading products…</div>}>
+              <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
+              <ProductGrid products={visible} loading={catalogLoading} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIdSet={wishlistIdSet} onToggleWishlist={toggleWishlist} onAdd={addFromGrid} />
+            </Suspense>
+          ) : (
+            <div aria-busy="true" className="flex min-h-[54svh] items-center justify-center text-sm text-mute">
+              Loading products…
+            </div>
+          )}
         </section>
         <Suspense fallback={<div className="min-h-24" />}><About /></Suspense>
       </main>}
