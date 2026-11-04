@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Toast({ toast, onDismiss, onView }) {
   useEffect(() => {
@@ -10,17 +9,9 @@ export default function Toast({ toast, onDismiss, onView }) {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-20 z-[60] flex justify-center px-4 sm:bottom-6" aria-live="polite">
-      <AnimatePresence mode="popLayout">
-        {toast && (
-          <motion.div
-            key={toast.id}
-            role={toast.type === 'error' ? 'alert' : 'status'}
-            initial={{ opacity: 0, y: 24, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.97 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            className="glass-dark pointer-events-auto flex max-w-full items-center gap-3 rounded-full p-1.5 pr-1.5 text-sm"
-          >
+      {toast && (
+          <div key={toast.id} role={toast.type === 'error' ? 'alert' : 'status'}
+            className="glass-dark pointer-events-auto flex max-w-full items-center gap-3 rounded-full p-1.5 pr-1.5 text-sm animate-[toast-in_.18s_ease-out]">
             {toast.type === 'error' ? (
               <>
                 <span className="min-w-0 px-3 py-2">{toast.message}</span>
@@ -42,9 +33,8 @@ export default function Toast({ toast, onDismiss, onView }) {
                 </button>
               </>
             )}
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

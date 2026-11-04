@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
 import { Check, ChevronDown } from 'lucide-react';
-import Reveal from '../../../shared/components/Reveal.jsx';
-import { spring } from '../../../shared/motion.js';
 
 const SORT_OPTIONS = [
   { value: 'featured', label: 'Featured' },
@@ -126,7 +123,7 @@ function SortDropdown({ sort, onSort }) {
 export default function FilterBar({ categories, active, onChange, counts, sort, onSort, shown }) {
   return (
     <>
-      <Reveal className="mb-8 flex items-end justify-between gap-6">
+      <div className="mb-8 flex items-end justify-between gap-6">
         <div id="categories" className="scroll-mt-28">
           <p className="eyebrow">Shop</p>
           <h2 className="mt-3 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">The Collection</h2>
@@ -134,7 +131,7 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
         <p className="pb-1 text-sm tabular-nums text-mute" aria-live="polite">
           {shown} {shown === 1 ? 'piece' : 'pieces'}
         </p>
-      </Reveal>
+      </div>
 
       <div className="sticky top-[76px] z-30 -mx-5 mb-10 px-5 py-2">
         <div className="flex items-center justify-between gap-3">
@@ -156,7 +153,7 @@ export default function FilterBar({ categories, active, onChange, counts, sort, 
                     on ? 'text-onsolid' : 'text-charcoal/70 hover:bg-surface/50 hover:text-ink'
                   }`}
                 >
-                  {on && <motion.span layoutId="active-pill" className="glass-dark absolute inset-0 rounded-full" transition={spring} />}
+                  {on && <span className="glass-dark absolute inset-0 rounded-full" />}
                   <span className="relative z-10">
                     {c}
                     <span className={`ml-1.5 text-xs tabular-nums ${on ? 'text-onsolid/55' : 'text-mute'}`}>{counts[c]}</span>

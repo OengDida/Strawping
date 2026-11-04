@@ -1,74 +1,51 @@
-import { forwardRef, useRef } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { forwardRef } from 'react';
 import { ArrowRight } from 'lucide-react';
 import GlassButton from '../../../shared/components/GlassButton.jsx';
-import { ease } from '../../../shared/motion.js';
 import { formatPrice } from '../model.js';
 
-const line = {
-  hidden: { y: '110%' },
-  show: (i) => ({ y: '0%', transition: { duration: 1.1, ease, delay: 0.15 + i * 0.12 } }),
-};
-
-const fadeUp = (delay) => ({
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.9, ease, delay },
-});
-
 const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) {
-  const frame = useRef(null);
-  const { scrollYProgress } = useScroll({ target: frame, offset: ['start end', 'end start'] });
-  const imgY = useTransform(scrollYProgress, [0, 1], ['-7%', '7%']);
-
   return (
     <section id="top" ref={ref} className="relative overflow-hidden">
       <div aria-hidden className="pointer-events-none absolute -right-48 -top-48 h-[620px] w-[620px] rounded-full bg-accent/[0.13] dark:bg-accent/[0.16] blur-[130px]" />
       <div aria-hidden className="pointer-events-none absolute -left-48 top-1/2 h-[480px] w-[480px] rounded-full bg-alloy/40 blur-[130px]" />
 
-      <div className="relative mx-auto grid min-h-screen min-h-[100svh] max-w-7xl items-center gap-14 px-5 pb-16 pt-28 lg:grid-cols-12 lg:gap-10">
+      <div className="relative mx-auto grid min-h-[82svh] lg:min-h-screen lg:min-h-[100svh] max-w-7xl items-center gap-14 px-5 pb-16 pt-28 lg:grid-cols-12 lg:gap-10">
         <div className="lg:col-span-7">
-          <motion.p {...fadeUp(0)} className="eyebrow mb-8 flex items-center gap-3">
+          <p className="eyebrow mb-8 flex items-center gap-3">
             <span className="h-px w-8 bg-accent" /> Made by riders,
-          </motion.p>
+          </p>
 
           <h1 className="text-[clamp(3.25rem,9.5vw,8.5rem)] font-semibold leading-[0.9] tracking-tightest">
             {['Strawp', 'Moto'].map((t, i) => (
               <span key={t} className="block overflow-hidden pb-[0.08em]">
-                <motion.span className="block" variants={line} initial="hidden" animate="show" custom={i}>
+                <span className="block hero-title-line">
                   {t}
                   {i === 1 && <span className="text-accent">.</span>}
-                </motion.span>
+                </span>
               </span>
             ))}
           </h1>
 
-          <motion.p {...fadeUp(0.5)} className="mt-8 max-w-md text-lg leading-relaxed text-charcoal/70">
+          <p className="mt-8 max-w-md text-lg leading-relaxed text-charcoal/70">
             Helmets, gloves, luggage and armour — selected for fit, finish and certified protection.
-          </motion.p>
+          </p>
 
-          <motion.div {...fadeUp(0.65)} className="mt-10 flex flex-wrap items-center gap-5">
+          <div className="mt-10 flex flex-wrap items-center gap-5">
             <GlassButton onClick={onExplore}>
               Explore Gear <ArrowRight className="h-4 w-4" />
             </GlassButton>
             <span className="text-sm text-mute">Pay on delivery · Cambodia</span>
-          </motion.div>
+          </div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 32, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 1.2, ease, delay: 0.25 }}
-          className="lg:col-span-5"
-        >
+        <div className="lg:col-span-5">
           <div
-            ref={frame}
             className="relative mx-auto aspect-[4/5] w-full max-w-md overflow-hidden rounded-[2rem] bg-stone shadow-lift lg:max-w-none"
           >
-            <motion.img
+            <img
               src={featured?.image || 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=1000&q=85'}
               alt={featured ? `${featured.name} ${featured.type}` : 'Motorcycle equipment'}
-              style={{ y: imgY, scale: 1.16 }}
+              loading="eager" fetchPriority="high" decoding="async"
               className="h-full w-full object-cover dark:brightness-[.9]"
             />
             <button
@@ -90,7 +67,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
               </span>
             </button>
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );
