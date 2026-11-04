@@ -134,3 +134,22 @@
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+
+/* Keep frosted-glass effects lighter on phones, where large backdrop blurs
+   can cause scrolling and opening-drawer jank on mid-range devices. */
+@media (max-width: 767px) {
+  .glass, .glass-dark {
+    -webkit-backdrop-filter: blur(10px) saturate(135%);
+    backdrop-filter: blur(10px) saturate(135%);
+  }
+  .glass-panel {
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(14px) saturate(140%);
+  }
+  .sheen { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce), (max-width: 767px) {
+  .group:hover .sheen { background-position: 100% 0; }
+}

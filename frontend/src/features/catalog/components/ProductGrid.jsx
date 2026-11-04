@@ -1,4 +1,3 @@
-import { AnimatePresence } from 'framer-motion';
 import ProductCard from './ProductCard.jsx';
 
 export default function ProductGrid({
@@ -34,8 +33,7 @@ export default function ProductGrid({
 
   return (
     <ul className="grid grid-cols-1 gap-x-6 gap-y-12 min-[480px]:grid-cols-2 lg:grid-cols-4">
-      <AnimatePresence mode="popLayout">
-        {products.map((product, index) => (
+      {products.map((product, index) => (
           <ProductCard
             key={product.id}
             product={product}
@@ -46,8 +44,7 @@ export default function ProductGrid({
             isWishlisted={wishlistIds.includes(product.id)}
             onToggleWishlist={onToggleWishlist}
           />
-        ))}
-      </AnimatePresence>
+      ))}
     </ul>
   );
 }

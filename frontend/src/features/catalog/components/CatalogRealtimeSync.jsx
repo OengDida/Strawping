@@ -59,9 +59,9 @@ export default function CatalogRealtimeSync() {
       .subscribe((status) => {
         // Fetch once after subscription so changes between the initial HTTP
         // fetch and channel connection cannot leave the cache behind.
-        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          reconcile();
-        }
+        // The initial catalog query already runs on mount. Invalidating again
+        // on SUBSCRIBED caused a second full catalog request on every visit.
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reconcile();
       });
 
     return () => {

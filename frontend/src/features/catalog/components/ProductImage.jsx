@@ -28,7 +28,6 @@ export default function ProductImage({ src, alt, priority = false }) {
   const fallbackAttempted = useRef(false);
 
   const optimizedSrc = storageRenderUrl(src, 480, 600, 80) || src;
-  const blurSrc = storageRenderUrl(src, 32, 40, 30);
 
   useEffect(() => {
     setLoaded(false);
@@ -45,16 +44,7 @@ export default function ProductImage({ src, alt, priority = false }) {
         />
       )}
 
-      {blurSrc && !loaded && (
-        <img
-          src={blurSrc}
-          alt=""
-          aria-hidden="true"
-          loading={priority ? 'eager' : 'lazy'}
-          decoding="async"
-          className="absolute inset-0 h-full w-full scale-110 object-cover blur-xl"
-        />
-      )}
+
 
       {!failed && src && (
         <img
@@ -63,6 +53,7 @@ export default function ProductImage({ src, alt, priority = false }) {
           loading={priority ? 'eager' : 'lazy'}
           decoding="async"
           fetchPriority={priority ? 'high' : 'auto'}
+          sizes="(max-width: 479px) 92vw, (max-width: 1023px) 46vw, 25vw"
           onLoad={() => setLoaded(true)}
           onError={(event) => {
             if (optimizedSrc !== src && !fallbackAttempted.current) {

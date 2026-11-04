@@ -1,25 +1,25 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import Navbar from '../features/navigation/components/Navbar.jsx';
-import Hero from '../features/catalog/components/Hero.jsx';
-import FilterBar from '../features/catalog/components/FilterBar.jsx';
-import ProductGrid from '../features/catalog/components/ProductGrid.jsx';
-import QuickView from '../features/catalog/components/QuickView.jsx';
-import CartDrawer from '../features/cart/components/CartDrawer.jsx';
-import SearchOverlay from '../features/catalog/components/SearchOverlay.jsx';
+const Hero = lazy(() => import('../features/catalog/components/Hero.jsx'));
+const FilterBar = lazy(() => import('../features/catalog/components/FilterBar.jsx'));
+const ProductGrid = lazy(() => import('../features/catalog/components/ProductGrid.jsx'));
+const QuickView = lazy(() => import('../features/catalog/components/QuickView.jsx'));
+const CartDrawer = lazy(() => import('../features/cart/components/CartDrawer.jsx'));
+const SearchOverlay = lazy(() => import('../features/catalog/components/SearchOverlay.jsx'));
 import Toast from '../shared/components/Toast.jsx';
 import BackToTop from '../shared/components/BackToTop.jsx';
-import About from '../features/catalog/components/About.jsx';
+const About = lazy(() => import('../features/catalog/components/About.jsx'));
 import Footer from '../features/layout/components/Footer.jsx';
-import AuthModal from '../features/auth/components/AuthModal.jsx';
+const AuthModal = lazy(() => import('../features/auth/components/AuthModal.jsx'));
 import useAuthSession from '../features/auth/hooks/useAuthSession.js';
 import { logout } from '../features/auth/supabase.js';
-import AccountSettingsModal from '../features/account/components/AccountSettingsModal.jsx';
-import UsernameSetupModal from '../features/account/components/UsernameSetupModal.jsx';
-import OrderHistoryPage from '../features/account/components/OrderHistoryPage.jsx';
+const AccountSettingsModal = lazy(() => import('../features/account/components/AccountSettingsModal.jsx'));
+const UsernameSetupModal = lazy(() => import('../features/account/components/UsernameSetupModal.jsx'));
+const OrderHistoryPage = lazy(() => import('../features/account/components/OrderHistoryPage.jsx'));
 import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js';
 import { addMyWishlistItem, loadMyCart, loadMyWishlist, removeMyWishlistItem, saveMyCart } from '../features/account/accountService.js';
 import { clearGuestCart, mergeCartItems, readGuestCart, saveGuestCart, serializeCartItems } from '../features/cart/cartModel.js';
-import WishlistDrawer from '../features/wishlist/components/WishlistDrawer.jsx';
+const WishlistDrawer = lazy(() => import('../features/wishlist/components/WishlistDrawer.jsx'));
 import { useCatalog } from '../features/catalog/hooks/useCatalog.js';
 import { mapProduct, variantPrice } from '../features/catalog/model.js';
 import { useScrollLock, useTheme } from '../shared/hooks/index.js';
@@ -363,23 +363,23 @@ export default function App() {
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
     <Navbar solid={pastHero || isOrderHistory} isAccountPage={isOrderHistory} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onOrderHistory={() => navigateTo('/account/orders')} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
     {isOrderHistory
-      ? <OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} />
+      ? <Suspense fallback={<div className="min-h-[60svh]" />}><OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} /></Suspense>
       : <main>
-        <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
+        <Suspense fallback={<div className="min-h-[60svh]" />}><Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
         <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
           <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
           <ProductGrid products={visible} loading={catalogLoading} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
         </section>
-        <About />
+        <About /></Suspense>
       </main>}
     <Footer />
-    <QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} />
-    <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} cartLoading={!cartIsReady && !cartLoadError} cartLoadError={cartLoadError} />
-    <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} />
-    <WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} products={products} productIds={wishlistIds} onRemove={(id) => toggleWishlist({ id })} onAdd={(p) => { setWishlistOpen(false); if (p.hasVariants) setQuickView(p); else addToCart(p, null); }} />
-    <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
-    <AccountSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} user={user} profile={profile} onProfileUpdated={(nextProfile) => { setProfile(nextProfile); reloadProfile(); }} />
-    <UsernameSetupModal
+    {quickView && <Suspense fallback={null}><QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} /></Suspense>}
+    {cartOpen && <Suspense fallback={null}><CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} cart={cartLines} dispatch={dispatch} user={user} session={session} profile={profile} cartLoading={!cartIsReady && !cartLoadError} cartLoadError={cartLoadError} /></Suspense>}
+    {searchOpen && <Suspense fallback={null}><SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} onSelect={(p) => { setSearchOpen(false); setQuickView(p); }} products={products} /></Suspense>}
+    {wishlistOpen && <Suspense fallback={null}><WishlistDrawer open={wishlistOpen} onClose={() => setWishlistOpen(false)} products={products} productIds={wishlistIds} onRemove={(id) => toggleWishlist({ id })} onAdd={(p) => { setWishlistOpen(false); if (p.hasVariants) setQuickView(p); else addToCart(p, null); }} /></Suspense>}
+    {authOpen && <Suspense fallback={null}><AuthModal open={authOpen} onClose={() => setAuthOpen(false)} /></Suspense>}
+    {settingsOpen && <Suspense fallback={null}><AccountSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} user={user} profile={profile} onProfileUpdated={(nextProfile) => { setProfile(nextProfile); reloadProfile(); }} /></Suspense>}
+    {usernamePromptOpen && <Suspense fallback={null}><UsernameSetupModal
       open={usernamePromptOpen}
       onClose={dismissUsernamePrompt}
       user={user}
@@ -387,7 +387,7 @@ export default function App() {
         setProfile(nextProfile);
         dismissUsernamePrompt();
       }}
-    />
+    /></Suspense>}
     <Toast toast={toast} onDismiss={() => setToast(null)} onView={() => { setToast(null); setCartOpen(true); }} />
     <BackToTop visible={pastHero && !cartOpen} />
   </div>;

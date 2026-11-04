@@ -1,23 +1,11 @@
-import { forwardRef } from 'react';
-import { motion } from 'framer-motion';
 import { Eye, Plus, Heart } from 'lucide-react';
-import { ease } from '../../../shared/motion.js';
 import { formatPrice } from '../model.js';
 import ProductImage from './ProductImage.jsx';
 
-const ProductCard = forwardRef(function ProductCard({ product, index, onQuickView, onAdd, canAdd, isWishlisted, onToggleWishlist }, ref) {
+export default function ProductCard({ product, index, onQuickView, onAdd, canAdd, isWishlisted, onToggleWishlist }) {
   const addEnabled = canAdd ? canAdd(product) : product.inStock;
   return (
-    <motion.li
-      ref={ref}
-      layout
-      initial={{ opacity: 0, y: 32, scale: 0.98 }}
-      whileInView={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.94, transition: { duration: 0.25 } }}
-      viewport={{ once: true, margin: '-40px' }}
-      transition={{ duration: 0.7, ease, delay: (index % 4) * 0.06, layout: { type: 'spring', stiffness: 300, damping: 32 } }}
-      className="group"
-    >
+    <li className="group">
       <div className="relative overflow-hidden rounded-[1.75rem] bg-stone ring-1 ring-inset ring-black/[0.03] transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(.22,1,.36,1)] group-hover:-translate-y-1.5 group-hover:shadow-lift">
         <button
           type="button"
@@ -62,16 +50,15 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
           >
             <Eye className="h-4 w-4" strokeWidth={1.8} /> Quick View
           </button>
-          <motion.button
+          <button
             type="button"
-            whileTap={{ scale: 0.92 }}
             onClick={() => { if (addEnabled) onAdd(product); }}
             aria-label={addEnabled ? `Add ${product.name} to bag` : `${product.name} out of stock`}
             disabled={!addEnabled}
             className="glass-dark focus-ring flex h-10 items-center gap-1.5 rounded-full px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus className="h-4 w-4" /> {addEnabled ? 'Add' : 'Out of stock'}
-          </motion.button>
+          </button>
         </div>
       </div>
 
@@ -82,8 +69,6 @@ const ProductCard = forwardRef(function ProductCard({ product, index, onQuickVie
         </div>
         <p className="text-[15px] tabular-nums">{formatPrice(product.price)}</p>
       </div>
-    </motion.li>
+    </li>
   );
-});
-
-export default ProductCard;
+}

@@ -86,7 +86,7 @@ export function useCatalog() {
     initialDataUpdatedAt: 0,
     staleTime: 30_000,
     gcTime: 24 * 60 * 60 * 1_000,
-    refetchOnMount: 'always',
+    refetchOnMount: true,
     refetchOnWindowFocus: true,
     retry: 1,
   });
