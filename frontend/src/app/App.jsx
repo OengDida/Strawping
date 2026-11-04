@@ -14,12 +14,10 @@ import BackToTop from '../shared/components/BackToTop.jsx';
 import Footer from '../features/layout/components/Footer.jsx';
 const AuthModal = lazy(() => import('../features/auth/components/AuthModal.jsx'));
 import useAuthSession from '../features/auth/hooks/useAuthSession.js';
-import { logout } from '../features/auth/supabase.js';
 const AccountSettingsModal = lazy(() => import('../features/account/components/AccountSettingsModal.jsx'));
 const UsernameSetupModal = lazy(() => import('../features/account/components/UsernameSetupModal.jsx'));
 const OrderHistoryPage = lazy(() => import('../features/account/components/OrderHistoryPage.jsx'));
 import useCustomerProfile from '../features/account/hooks/useCustomerProfile.js';
-import { addMyWishlistItem, loadMyCart, loadMyWishlist, removeMyWishlistItem, saveMyCart } from '../features/account/accountService.js';
 import { clearGuestCart, mergeCartItems, readGuestCart, saveGuestCart, serializeCartItems } from '../features/cart/cartModel.js';
 const WishlistDrawer = lazy(() => import('../features/wishlist/components/WishlistDrawer.jsx'));
 import { useCatalog } from '../features/catalog/hooks/useCatalog.js';
@@ -163,7 +161,7 @@ export default function App() {
       try {
         const items = owner === 'guest'
           ? readGuestCart()
-          : mergeCartItems(await loadMyCart(owner), readGuestCart());
+          : mergeCartItems(await (await import('../features/account/accountService.js')).loadMyCart(owner), readGuestCart());
         if (!active || generation !== cartLoadGeneration.current) return;
         dispatch({ type: 'replace', items });
         setCartScope(owner);
@@ -201,7 +199,7 @@ export default function App() {
     const timer = window.setTimeout(() => {
       const write = cartWriteQueueRef.current
         .catch(() => {})
-        .then(() => saveMyCart(owner, items));
+        .then(async () => (await import('../features/account/accountService.js')).saveMyCart(owner, items));
       cartWriteQueueRef.current = write;
       write.then(() => {
         if (!active || cartOwnerRef.current !== owner) return;
@@ -230,7 +228,8 @@ export default function App() {
       return undefined;
     }
     let active = true;
-    loadMyWishlist(user.id)
+    import('../features/account/accountService.js')
+      .then(({ loadMyWishlist }) => loadMyWishlist(user.id))
       .then((ids) => { if (active) setWishlistIds(ids); })
       .catch((error) => {
         if (!active) return;
@@ -248,7 +247,8 @@ export default function App() {
       const productId = pendingWishlistProduct;
       setPendingWishlistProduct(null);
       try { sessionStorage.removeItem('strawping.pendingWishlist'); } catch {}
-      addMyWishlistItem(productId)
+      import('../features/account/accountService.js')
+        .then(({ addMyWishlistItem }) => addMyWishlistItem(productId))
         .then(() => setWishlistIds((current) => current.includes(productId) ? current : [productId, ...current]))
         .catch((error) => setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not save that item.' }));
     }
@@ -338,8 +338,9 @@ export default function App() {
       ? current.filter((id) => id !== productId)
       : [productId, ...current]);
     try {
-      if (wasSaved) await removeMyWishlistItem(productId);
-      else await addMyWishlistItem(productId);
+      const accountService = await import('../features/account/accountService.js');
+      if (wasSaved) await accountService.removeMyWishlistItem(productId);
+      else await accountService.addMyWishlistItem(productId);
     } catch (error) {
       setWishlistIds((current) => wasSaved
         ? (current.includes(productId) ? current : [productId, ...current])
@@ -363,7 +364,7 @@ export default function App() {
 
   return <div className="min-h-screen overflow-x-hidden">
     {syncError && <div role="status" className="fixed bottom-3 left-3 z-[70] max-w-sm rounded-xl bg-ink px-4 py-3 text-xs text-white shadow-lg">Catalog sync issue: {syncError}</div>}
-    <Navbar solid={pastHero || isOrderHistory} isAccountPage={isOrderHistory} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onOrderHistory={() => navigateTo('/account/orders')} onLogout={async () => { try { await logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
+    <Navbar solid={pastHero || isOrderHistory} isAccountPage={isOrderHistory} cartCount={cartCount} wishlistCount={wishlistIds.length} onWishlist={openWishlist} onCart={() => setCartOpen(true)} onSearch={() => setSearchOpen(true)} theme={theme} onToggleTheme={toggleTheme} user={user} onAuthClick={() => setAuthOpen(true)} onSettings={() => setSettingsOpen(true)} onOrderHistory={() => navigateTo('/account/orders')} onLogout={async () => { try { await (await import('../features/auth/supabase.js')).logout(); } catch (error) { setToast({ id: Date.now(), type: 'error', message: error.message || 'Could not log out. Please try again.' }); } }} />
     {isOrderHistory
       ? <Suspense fallback={<div className="min-h-[60svh]" />}><OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} /></Suspense>
       : <main>

@@ -1,35 +1,36 @@
 import { useEffect, useState } from 'react';
-import { getCurrentSession, subscribeToAuthChanges, supabase } from '../supabase.js';
 
-/** Restores the persisted Supabase session and keeps React state in sync with auth events. */
+/** Load the authentication SDK after the storefront has mounted. */
 export default function useAuthSession() {
   const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(Boolean(supabase));
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return undefined;
-    }
-
     let active = true;
-    const unsubscribe = subscribeToAuthChanges((nextSession) => {
-      if (!active) return;
-      setSession(nextSession);
-      setLoading(false);
-    });
+    let unsubscribe = () => {};
 
-    getCurrentSession()
-      .then((savedSession) => {
+    import('../supabase.js').then(({ getCurrentSession, subscribeToAuthChanges, supabase }) => {
+      if (!active) return;
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+      unsubscribe = subscribeToAuthChanges((nextSession) => {
+        if (!active) return;
+        setSession(nextSession);
+        setLoading(false);
+      });
+      return getCurrentSession().then((savedSession) => {
         if (!active) return;
         setSession(savedSession);
         setLoading(false);
-      })
-      .catch(() => {
-        if (!active) return;
+      });
+    }).catch(() => {
+      if (active) {
         setSession(null);
         setLoading(false);
-      });
+      }
+    });
 
     return () => {
       active = false;

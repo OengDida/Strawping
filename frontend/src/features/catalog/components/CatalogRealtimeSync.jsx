@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../../auth/supabase.js';
 import {
   catalogQueryKey,
   readCachedCatalog,
@@ -12,14 +11,17 @@ export default function CatalogRealtimeSync() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    if (!supabase) return undefined;
-
     let active = true;
+    let channel = null;
+    let supabaseClient = null;
     const reconcile = () => {
       void queryClient.invalidateQueries({ queryKey: catalogQueryKey });
     };
 
-    const channel = supabase
+    import('../../auth/supabase.js').then(({ supabase }) => {
+      if (!active || !supabase) return;
+      supabaseClient = supabase;
+      channel = supabase
       .channel('public:store_data:products')
       .on(
         'postgres_changes',
@@ -63,10 +65,11 @@ export default function CatalogRealtimeSync() {
         // on SUBSCRIBED caused a second full catalog request on every visit.
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reconcile();
       });
+    });
 
     return () => {
       active = false;
-      void supabase.removeChannel(channel);
+      if (channel && supabaseClient) void supabaseClient.removeChannel(channel);
     };
   }, [queryClient]);
 
