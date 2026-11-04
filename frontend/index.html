@@ -10,19 +10,27 @@
   </head>
   <body>
     <div id="root">
-      <div class="startup-shell" role="status" aria-label="Loading Strawping">
+      <div class="startup-shell" role="status" aria-label="Loading Strawping storefront">
         <div class="startup-brand">STRAW<span>PING</span></div>
+        <h1 class="startup-heading">Motorcycle gear for every ride.</h1>
+        <p class="startup-copy">Helmets, gloves, luggage and armour, selected by riders.</p>
         <div class="startup-line"></div>
       </div>
     </div>
     <style>
-      .startup-shell{min-height:100svh;display:grid;place-content:center;justify-items:center;gap:18px;background:#f6f5f2;color:#171717;font-family:Arial,sans-serif}
+      .startup-shell{box-sizing:border-box;min-height:100svh;display:grid;align-content:center;justify-items:center;gap:18px;padding:32px;text-align:center;background:#f6f5f2;color:#171717;font-family:Arial,sans-serif}
       .startup-brand{font-size:20px;font-weight:800;letter-spacing:.22em}
       .startup-brand span{font-weight:400}
+      .startup-heading{max-width:12ch;margin:20px 0 0;font-size:clamp(36px,12vw,64px);line-height:.95;letter-spacing:-.05em}
+      .startup-copy{max-width:32ch;margin:0;color:#6b6862;font-size:16px;line-height:1.5}
       .startup-line{width:92px;height:2px;overflow:hidden;background:#dedbd5;position:relative}
       .startup-line:after{content:"";position:absolute;inset:0;width:42%;background:#171717;animation:startup-progress 1.1s ease-in-out infinite alternate}
       @keyframes startup-progress{from{transform:translateX(0)}to{transform:translateX(140%)}}
       @media(prefers-color-scheme:dark){.startup-shell{background:#111;color:#f6f5f2}.startup-line{background:#383838}.startup-line:after{background:#f6f5f2}}
+      html.dark .startup-shell{background:#111;color:#f6f5f2}
+      html.dark .startup-copy{color:#aaa7a1}
+      html.dark .startup-line{background:#383838}
+      html.dark .startup-line:after{background:#f6f5f2}
       @media(prefers-reduced-motion:reduce){.startup-line:after{animation:none;width:100%}}
     </style>
     <script type="module" src="/src/main.jsx"></script>

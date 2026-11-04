@@ -42,11 +42,8 @@ export default function Navbar({ solid, isAccountPage = false, cartCount, wishli
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5">
-      <motion.nav
+      <nav
         aria-label="Primary"
-        initial={{ y: -24, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.8, ease }}
         className="relative mx-auto flex h-14 max-w-7xl items-center justify-between rounded-2xl pl-4 pr-2 sm:pl-5"
       >
         {/* Frosted layer fades in once the hero is scrolled past */}
@@ -118,7 +115,7 @@ export default function Navbar({ solid, isAccountPage = false, cartCount, wishli
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </IconButton>
         </div>
-      </motion.nav>
+      </nav>
 
       <AnimatePresence>
         {menuOpen && (
