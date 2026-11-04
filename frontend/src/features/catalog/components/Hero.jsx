@@ -4,9 +4,14 @@ import GlassButton from '../../../shared/components/GlassButton.jsx';
 import { formatPrice } from '../model.js';
 import { getResponsiveImageSources } from '../imageSources.js';
 
-const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) {
-  const heroImage = featured?.image ||
-    'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=1000&q=85';
+const FALLBACK_HERO_IMAGE =
+  'https://images.unsplash.com/photo-1558981806-ec527fa84c39?auto=format&fit=crop&w=1000&q=85';
+
+const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured, loading = false }, ref) {
+  // While the catalog is still loading and nothing is cached, do not download the
+  // generic fallback photo only to replace it with the real featured product moments later.
+  const waitingForFeatured = loading && !featured;
+  const heroImage = featured?.image || FALLBACK_HERO_IMAGE;
   const { src: heroSrc, srcSet: heroSrcSet } = getResponsiveImageSources(heroImage, {
     widths: [480, 640, 960, 1280],
     aspectRatio: 4 / 5,
@@ -26,7 +31,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
           </p>
 
           <h1 className="text-[clamp(3.25rem,9.5vw,8.5rem)] font-semibold leading-[0.9] tracking-tightest">
-            {['Strawp', 'Moto'].map((t) => (
+            {['Strawp', 'Moto'].map((t, i) => (
               <span key={t} className="block pb-[0.08em]">
                 <span className="block">
                   {t}
@@ -52,7 +57,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
           <div
             className="relative mx-auto aspect-[4/5] w-full max-w-md overflow-hidden rounded-[2rem] bg-stone shadow-lift lg:max-w-none"
           >
-            <img
+            {!waitingForFeatured && <img
               src={heroSrc}
               srcSet={heroSrcSet}
               sizes="(max-width: 1023px) 92vw, 40vw"
@@ -63,7 +68,7 @@ const Hero = forwardRef(function Hero({ onExplore, featured, onFeatured }, ref) 
               width="640"
               height="800"
               className="h-full w-full object-cover dark:brightness-[.9]"
-            />
+            />}
             <button
               type="button"
               onClick={onFeatured}

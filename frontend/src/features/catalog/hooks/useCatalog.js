@@ -39,37 +39,18 @@ export function writeCachedCatalog(catalog) {
   }
 }
 
-async function getJson(path, signal) {
-  const response = await fetch(`/api/${path}`, {
-    cache: 'no-store',
-    signal,
-    headers: { Accept: 'application/json' },
-  });
-
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.error || `Request failed (${response.status})`);
-  }
-  return body;
-}
-
 async function fetchCatalog(signal) {
+  // Plain fetch (no custom headers / no-store) so it can reuse the <link rel="preload"> in
+  // index.html and the CDN copy. Freshness comes from realtime sync + staleTime below.
+  const response = await fetch('/api/catalog', { signal });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+
   const cached = readCachedCatalog();
-
-  // Fetch products and settings concurrently. Settings are non-critical to the
-  // catalog, so a settings outage does not hide a successful product response.
-  const [productResult, settingsResult] = await Promise.all([
-    getJson('products', signal),
-    getJson('settings', signal).catch((error) => {
-      if (signal?.aborted) throw error;
-      return { settings: cached?.settings ?? {} };
-    }),
-  ]);
-
   const catalog = {
-    products: Array.isArray(productResult.products) ? productResult.products : [],
-    settings: settingsResult.settings ?? cached?.settings ?? {},
-    updatedAt: productResult.updatedAt ?? null,
+    products: Array.isArray(body.products) ? body.products : [],
+    settings: body.settings ?? cached?.settings ?? {},
+    updatedAt: body.updatedAt ?? null,
   };
 
   writeCachedCatalog(catalog);

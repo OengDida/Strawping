@@ -173,6 +173,38 @@ test("settings and products are readable through the public storefront API", asy
   });
 });
 
+test("combined catalog endpoint returns products and settings in one cacheable response", async () => {
+  let calls = 0;
+  globalThis.fetch = async url => {
+    calls += 1;
+    if (String(url).includes("key=eq.products")) {
+      return reply([{ value: [{ id: "prod-mug", name: "Mug", category: "Home", price: 4.25, image: "https://images.example/mug.jpg", description: "Cup" }], updated_at: "2026-11-03T00:00:00.000Z" }]);
+    }
+    if (String(url).includes("key=eq.settings")) {
+      return reply([{ value: { storeName: "Strawping", currency: "$" } }]);
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  const response = await handler(event("/catalog"));
+  const body = JSON.parse(response.body);
+  assert.equal(response.statusCode, 200);
+  assert.equal(calls, 2);
+  assert.equal(body.products[0].id, "prod-mug");
+  assert.equal(body.settings.storeName, "Strawping");
+  assert.equal(body.updatedAt, "2026-11-03T00:00:00.000Z");
+  assert.match(response.headers["cache-control"], /s-maxage=\d+/);
+});
+
+test("combined catalog endpoint still serves products if the settings row is unavailable", async () => {
+  globalThis.fetch = async url => {
+    if (String(url).includes("key=eq.products")) return reply([{ value: [], updated_at: null }]);
+    throw new Error("settings outage");
+  };
+  const response = await handler(event("/catalog"));
+  assert.equal(response.statusCode, 200);
+  assert.equal(JSON.parse(response.body).settings.storeName, "Strawping");
+});
+
 test("catalog version endpoint exposes only the public products update timestamp", async () => {
   globalThis.fetch = async url => {
     assert.match(String(url), /store_data\?key=eq\.products&select=updated_at$/);

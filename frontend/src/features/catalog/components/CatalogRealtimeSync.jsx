@@ -15,11 +15,14 @@ export default function CatalogRealtimeSync() {
     if (!supabase) return undefined;
 
     let active = true;
+    let channel = null;
     const reconcile = () => {
       void queryClient.invalidateQueries({ queryKey: catalogQueryKey });
     };
 
-    const channel = supabase
+    const connect = () => {
+      if (!active) return;
+      channel = supabase
       .channel('public:store_data:products')
       .on(
         'postgres_changes',
@@ -63,10 +66,27 @@ export default function CatalogRealtimeSync() {
         // on SUBSCRIBED caused a second full catalog request on every visit.
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reconcile();
       });
+    };
+
+    // The websocket handshake competes with the HTML/JS/catalog requests on slow mobile
+    // networks, so connect only after the page has loaded and gone idle.
+    const schedule = () => {
+      if ('requestIdleCallback' in window) return window.requestIdleCallback(connect, { timeout: 4000 });
+      return window.setTimeout(connect, 2000);
+    };
+    let handle;
+    const start = () => { handle = schedule(); };
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start, { once: true });
 
     return () => {
       active = false;
-      void supabase.removeChannel(channel);
+      window.removeEventListener('load', start);
+      if (handle !== undefined) {
+        if ('cancelIdleCallback' in window) window.cancelIdleCallback(handle);
+        window.clearTimeout(handle);
+      }
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [queryClient]);
 

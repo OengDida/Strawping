@@ -767,6 +767,24 @@ export async function handler(event, context = {}) {
       return json(200, { updatedAt: rows?.[0]?.updated_at || null });
     }
 
+    // One round trip (and one serverless cold start) instead of two for the first paint.
+    // The catalog is public, so let Vercel's edge cache absorb repeat visits; realtime
+    // updates on the client keep open tabs fresh in the meantime.
+    if (resource === "catalog" && method === "GET") {
+      const [productRows, settingsRows] = await Promise.all([
+        db("store_data?key=eq.products&select=value,updated_at", { method: "GET" }),
+        db("store_data?key=eq.settings&select=value", { method: "GET" }).catch(() => null)
+      ]);
+      const stored = Array.isArray(productRows?.[0]?.value) ? productRows[0].value : [];
+      return json(200, {
+        products: stored.map(normalizeProduct).filter(Boolean),
+        settings: cleanSettings(settingsRows?.[0]?.value || DEFAULT_SETTINGS),
+        updatedAt: productRows?.[0]?.updated_at || null
+      }, {
+        "cache-control": "public, max-age=0, s-maxage=10, stale-while-revalidate=300"
+      });
+    }
+
     if (resource === "products" && method === "GET") {
       const rows = await db("store_data?key=eq.products&select=value,updated_at", { method: "GET" });
       const stored = Array.isArray(rows?.[0]?.value) ? rows[0].value : [];

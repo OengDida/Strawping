@@ -1,9 +1,16 @@
 /** @type {import('tailwindcss').Config} */
+import { fileURLToPath } from 'node:url';
+
+// Resolve content globs relative to this file, not process.cwd(). The root `npm run build`
+// (what Vercel runs) starts in the repo root, where './src/**' matches nothing and Tailwind
+// would purge nearly every class from the stylesheet.
+const here = (path) => fileURLToPath(new URL(path, import.meta.url));
+
 const token = (name) => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
   darkMode: 'class',
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  content: [here('./index.html'), here('./src/**/*.{js,jsx}')],
   theme: {
     extend: {
       colors: {

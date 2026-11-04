@@ -119,6 +119,19 @@ export default function App() {
     observer.observe(target);
     return () => observer.disconnect();
   }, [isOrderHistory, shopComponentsReady]);
+  // On phones the hero fills the first screen, so the product section is far below the
+  // IntersectionObserver margin. Warm the product chunks once the page is idle instead of
+  // waiting for the shopper to scroll, so the grid is ready by the time they get there.
+  useEffect(() => {
+    if (isOrderHistory || shopComponentsReady) return undefined;
+    const warm = () => setShopComponentsReady(true);
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(warm, { timeout: 2500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(warm, 1200);
+    return () => window.clearTimeout(id);
+  }, [isOrderHistory, shopComponentsReady]);
   const expectedCartScope = user?.id || 'guest';
   const cartIsReady = cartReady && cartScope === expectedCartScope;
   const currentCart = cartIsReady ? cart : [];
@@ -428,7 +441,7 @@ export default function App() {
     {isOrderHistory
       ? <Suspense fallback={<div className="min-h-[60svh]" />}><OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} /></Suspense>
       : <main>
-        <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
+        <Hero ref={heroRef} onExplore={scrollToShop} loading={catalogLoading} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
         <section id="shop" ref={shopRef} className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
           {shopComponentsReady ? (
             <Suspense fallback={<div aria-busy="true" className="flex min-h-[54svh] items-center justify-center text-sm text-mute">Loading products…</div>}>
