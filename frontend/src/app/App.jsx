@@ -1,14 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import Navbar from '../features/navigation/components/Navbar.jsx';
-const Hero = lazy(() => import('../features/catalog/components/Hero.jsx'));
-const FilterBar = lazy(() => import('../features/catalog/components/FilterBar.jsx'));
-const ProductGrid = lazy(() => import('../features/catalog/components/ProductGrid.jsx'));
+// Keep above-the-fold storefront sections in the initial bundle. Deferring these
+// made the homepage show only an empty Suspense placeholder on slower phones.
+import Hero from '../features/catalog/components/Hero.jsx';
+import FilterBar from '../features/catalog/components/FilterBar.jsx';
+import ProductGrid from '../features/catalog/components/ProductGrid.jsx';
+const About = lazy(() => import('../features/catalog/components/About.jsx'));
 const QuickView = lazy(() => import('../features/catalog/components/QuickView.jsx'));
 const CartDrawer = lazy(() => import('../features/cart/components/CartDrawer.jsx'));
 const SearchOverlay = lazy(() => import('../features/catalog/components/SearchOverlay.jsx'));
 import Toast from '../shared/components/Toast.jsx';
 import BackToTop from '../shared/components/BackToTop.jsx';
-const About = lazy(() => import('../features/catalog/components/About.jsx'));
 import Footer from '../features/layout/components/Footer.jsx';
 const AuthModal = lazy(() => import('../features/auth/components/AuthModal.jsx'));
 import useAuthSession from '../features/auth/hooks/useAuthSession.js';
@@ -365,12 +367,12 @@ export default function App() {
     {isOrderHistory
       ? <Suspense fallback={<div className="min-h-[60svh]" />}><OrderHistoryPage user={user} authLoading={authLoading} products={products} currency={settings.currency || '$'} onSignIn={() => setAuthOpen(true)} onBackToShop={() => navigateTo('/#shop')} /></Suspense>
       : <main>
-        <Suspense fallback={<div className="min-h-[60svh]" />}><Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
+        <Hero ref={heroRef} onExplore={scrollToShop} featured={featuredProduct} onFeatured={() => featuredProduct && setQuickView(featuredProduct)} />
         <section id="shop" className="relative mx-auto max-w-7xl scroll-mt-16 px-5 pb-28 pt-20 sm:pt-28">
           <FilterBar categories={categories} active={category} onChange={setCategory} counts={counts} sort={sort} onSort={setSort} shown={visible.length} />
           <ProductGrid products={visible} loading={catalogLoading} onQuickView={setQuickView} canAdd={canAddToBag} wishlistIds={wishlistIds} onToggleWishlist={toggleWishlist} onAdd={(p) => p.hasVariants ? setQuickView(p) : addToCart(p, null)} />
         </section>
-        <About /></Suspense>
+        <Suspense fallback={<div className="min-h-24" />}><About /></Suspense>
       </main>}
     <Footer />
     {quickView && <Suspense fallback={null}><QuickView product={quickView} onClose={() => setQuickView(null)} onAdd={addToCart} cartQtyFor={cartQtyFor} /></Suspense>}
