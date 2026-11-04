@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "src/client",
+  "regions": ["sin1"],
   "rewrites": [
     {
       "source": "/api/:path*",
