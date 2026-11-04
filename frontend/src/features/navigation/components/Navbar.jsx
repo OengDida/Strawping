@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ShoppingBag, Menu, X, UserRound, LogOut, Heart, Settings, Package } from 'lucide-react';
+import { ease } from '../../../shared/motion.js';
 import { ThemeToggle, ThemeSwitchRow } from './ThemeToggle.jsx';
 
 const LINKS = [
@@ -19,7 +21,15 @@ function IconButton({ label, onClick, count = 0, children, className = '', expan
     >
       {children}
       {count > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums text-white ring-2 ring-paper">{count}</span>
+        <motion.span
+          key={count}
+          initial={{ scale: 0.3, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 560, damping: 20 }}
+          className="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums text-white ring-2 ring-paper"
+        >
+          {count}
+        </motion.span>
       )}
     </button>
   );
@@ -32,7 +42,13 @@ export default function Navbar({ solid, isAccountPage = false, cartCount, wishli
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5">
-      <nav aria-label="Primary" className="relative mx-auto flex h-14 max-w-7xl items-center justify-between rounded-2xl pl-4 pr-2 sm:pl-5">
+      <motion.nav
+        aria-label="Primary"
+        initial={{ y: -24, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8, ease }}
+        className="relative mx-auto flex h-14 max-w-7xl items-center justify-between rounded-2xl pl-4 pr-2 sm:pl-5"
+      >
         {/* Frosted layer fades in once the hero is scrolled past */}
         <span
           aria-hidden
@@ -102,10 +118,17 @@ export default function Navbar({ solid, isAccountPage = false, cartCount, wishli
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </IconButton>
         </div>
-      </nav>
+      </motion.nav>
 
-      {menuOpen && (
-          <ul className="glass mx-auto mt-2 max-w-7xl origin-top rounded-2xl p-2 md:hidden">
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.ul
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            transition={{ duration: 0.3, ease }}
+            className="glass mx-auto mt-2 max-w-7xl origin-top rounded-2xl p-2 md:hidden"
+          >
             {LINKS.map((l) => (
               <li key={l.label}>
                 <a
@@ -120,8 +143,9 @@ export default function Navbar({ solid, isAccountPage = false, cartCount, wishli
             <li className="mt-1 border-t border-ink/[0.06] pt-1">
               <ThemeSwitchRow theme={theme} onToggle={onToggleTheme} />
             </li>
-          </ul>
+          </motion.ul>
         )}
+      </AnimatePresence>
     </header>
   );
 }

@@ -1,53 +1,88 @@
 import { useQuery } from '@tanstack/react-query';
 
 export const catalogQueryKey = ['store', 'catalog'];
-const settingsQueryKey = ['store', 'settings'];
+
 const CACHE_PRODUCTS = 'telegram_store_products';
 const CACHE_SETTINGS = 'telegram_store_settings';
 
 export function readCachedCatalog() {
   if (typeof window === 'undefined') return undefined;
+
   try {
     const rawProducts = localStorage.getItem(CACHE_PRODUCTS);
     if (rawProducts === null) return undefined;
+
     const products = JSON.parse(rawProducts);
     if (!Array.isArray(products)) return undefined;
+
     let settings = {};
-    try { settings = JSON.parse(localStorage.getItem(CACHE_SETTINGS) || '{}'); } catch {}
+    try {
+      settings = JSON.parse(localStorage.getItem(CACHE_SETTINGS) || '{}');
+    } catch {
+      // Keep usable product data if the cached settings are invalid.
+    }
+
     return { products, settings, updatedAt: null };
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 export function writeCachedCatalog(catalog) {
   if (typeof window === 'undefined') return;
+
   try {
     localStorage.setItem(CACHE_PRODUCTS, JSON.stringify(catalog.products ?? []));
     localStorage.setItem(CACHE_SETTINGS, JSON.stringify(catalog.settings ?? {}));
-  } catch { /* Storage may be disabled or full. */ }
+  } catch {
+    // Private browsing, disabled storage, or quota exhaustion should not break the app.
+  }
 }
 
 async function getJson(path, signal) {
   const response = await fetch(`/api/${path}`, {
-    cache: 'no-store', signal, headers: { Accept: 'application/json' },
+    cache: 'no-store',
+    signal,
+    headers: { Accept: 'application/json' },
   });
+
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  if (!response.ok) {
+    throw new Error(body.error || `Request failed (${response.status})`);
+  }
   return body;
 }
 
-/** Products are the critical path. Settings are fetched separately and never block the catalog. */
-export function useCatalog() {
+async function fetchCatalog(signal) {
   const cached = readCachedCatalog();
-  const productsQuery = useQuery({
+
+  // Fetch products and settings concurrently. Settings are non-critical to the
+  // catalog, so a settings outage does not hide a successful product response.
+  const [productResult, settingsResult] = await Promise.all([
+    getJson('products', signal),
+    getJson('settings', signal).catch((error) => {
+      if (signal?.aborted) throw error;
+      return { settings: cached?.settings ?? {} };
+    }),
+  ]);
+
+  const catalog = {
+    products: Array.isArray(productResult.products) ? productResult.products : [],
+    settings: settingsResult.settings ?? cached?.settings ?? {},
+    updatedAt: productResult.updatedAt ?? null,
+  };
+
+  writeCachedCatalog(catalog);
+  return catalog;
+}
+
+export function useCatalog() {
+  return useQuery({
     queryKey: catalogQueryKey,
-    queryFn: async ({ signal }) => {
-      const result = await getJson('products', signal);
-      const products = Array.isArray(result.products) ? result.products : [];
-      const latest = { products, settings: readCachedCatalog()?.settings ?? {}, updatedAt: result.updatedAt ?? null };
-      writeCachedCatalog(latest);
-      return latest;
-    },
-    initialData: cached,
+    queryFn: ({ signal }) => fetchCatalog(signal),
+    initialData: readCachedCatalog,
+    // A local cache is displayed immediately, but the server is always checked
+    // on mount so the storefront cannot remain indefinitely stale.
     initialDataUpdatedAt: 0,
     staleTime: 30_000,
     gcTime: 24 * 60 * 60 * 1_000,
@@ -55,30 +90,4 @@ export function useCatalog() {
     refetchOnWindowFocus: true,
     retry: 1,
   });
-
-  const settingsQuery = useQuery({
-    queryKey: settingsQueryKey,
-    queryFn: async ({ signal }) => {
-      const result = await getJson('settings', signal);
-      const settings = result.settings ?? {};
-      const products = productsQuery.data?.products ?? readCachedCatalog()?.products ?? [];
-      writeCachedCatalog({ products, settings, updatedAt: productsQuery.data?.updatedAt ?? null });
-      return settings;
-    },
-    initialData: cached?.settings ?? {},
-    staleTime: 60_000,
-    gcTime: 24 * 60 * 60 * 1_000,
-    retry: 1,
-  });
-
-  return {
-    ...productsQuery,
-    data: {
-      products: productsQuery.data?.products ?? [],
-      settings: settingsQuery.data ?? cached?.settings ?? {},
-      updatedAt: productsQuery.data?.updatedAt ?? null,
-    },
-    isError: productsQuery.isError,
-    error: productsQuery.error,
-  };
 }

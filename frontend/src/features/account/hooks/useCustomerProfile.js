@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { loadMyProfile } from '../accountService.js';
 
 export default function useCustomerProfile(userId) {
   const [profile, setProfile] = useState(null);
@@ -20,7 +21,6 @@ export default function useCustomerProfile(userId) {
     setError('');
     setLoadedForUserId(null);
     try {
-      const { loadMyProfile } = await import('../accountService.js');
       const nextProfile = await loadMyProfile(userId);
       if (requestId !== requestIdRef.current) return null;
       setProfile(nextProfile);
